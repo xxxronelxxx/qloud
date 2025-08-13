@@ -27,6 +27,7 @@ router.patch("/rename-fs", adminOnly, fs.handleRenameItem);
 
 // Settings API
 router.get('/settings', adminOnly, settings.get);
+router.get('/settings/paths', adminOnly, settings.getPaths);
 router.patch('/settings', adminOnly, settings.update);
 router.post('/settings/cache/invalidate', adminOnly, settings.invalidateCache);
 router.post('/settings/autorun/apply', adminOnly, settings.applyAutorun);

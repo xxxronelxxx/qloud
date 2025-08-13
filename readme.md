@@ -15,6 +15,8 @@
 - 📁 View and manage folders via intuitive UI
 - 🔒 Local-only, private and secure
 - ⚡ Fast and lightweight
+- 📂 **Customizable storage path** - choose where to save files
+- 🔄 **Automatic data migration** - seamless transition from old storage location
 
 ---
 
@@ -41,6 +43,27 @@ Download the latest version from the (SOON).
 2. Your computer starts a local server (e.g. `http://192.168.1.5:3000`)
 3. Connect from any device in the same Wi-Fi network
 4. Browse and download files via browser
+
+---
+
+## 📂 Storage Configuration
+
+Qloud now supports flexible storage configuration:
+
+- **Default**: Files are saved in the application folder (portable mode)
+- **Custom path**: Choose any folder on your system
+- **Legacy support**: Automatic migration from old Documents folder
+
+### Storage Settings
+
+Access storage settings in the app's Settings page:
+- Toggle between app folder and custom path
+- View current storage location
+- Automatic data migration on first run
+
+### Data Migration
+
+If you have existing data in the old location (`Documents/Qloud/`), it will be automatically migrated to the new location on first run.
 
 ---
 

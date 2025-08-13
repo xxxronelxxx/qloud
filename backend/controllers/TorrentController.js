@@ -4,7 +4,7 @@ const Settings = require('../models/SettingsModel');
 
 class TorrentController {
   constructor() {
-    this.downloadDir = path.join(Settings.projectPath, 'torrents');
+    this.downloadDir = Settings.getTorrentsPath();
     this.client = null;
     this.io = null;
 

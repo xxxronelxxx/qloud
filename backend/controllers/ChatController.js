@@ -7,7 +7,7 @@ class ChatController {
   constructor() {
     this.messages = [];
     this.maxMessages = Settings.readConfig().chatHistoryLimit || 100;
-    this.filePath = path.join(Settings.projectPath, 'chat.json');
+    this.filePath = Settings.getChatPath();
     this.loadHistory();
   }
 

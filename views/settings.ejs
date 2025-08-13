@@ -34,6 +34,36 @@
       </div>
     </div>
 
+    <div class="col-12">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Путь для сохранения файлов</h2>
+          <form id="pathSettingsForm" class="d-grid gap-3">
+            <div class="d-flex flex-wrap gap-3 align-items-center">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="useAppPathSwitch">
+                <label class="form-check-label" for="useAppPathSwitch">Использовать папку приложения</label>
+              </div>
+            </div>
+            <div id="customPathSection" style="display: none;">
+              <label class="form-label">Кастомный путь</label>
+              <div class="input-group">
+                <input type="text" id="customPathInput" class="form-control rounded-4" placeholder="C:\Users\Username\Documents\Qloud">
+                <button class="btn btn-outline-secondary rounded-4" type="button" id="browsePathBtn">Обзор</button>
+              </div>
+              <div class="form-text">Укажите полный путь к папке, где будут сохраняться файлы</div>
+            </div>
+            <div class="alert alert-info">
+              <strong>Текущий путь:</strong> <span id="currentPathDisplay">Загрузка...</span>
+            </div>
+            <div>
+              <button class="btn btn-success rounded-4" type="submit">Сохранить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <div class="col-12 col-lg-6">
       <div class="card rounded-4">
         <div class="card-body">
@@ -151,8 +181,54 @@
   (async () => {
     try {
       const res = await fetch('/api/settings');
-      const { config } = await res.json();
+      const { config, currentPath } = await res.json();
       if (config) {
+        // Path settings
+        const useAppPathSwitch = document.getElementById('useAppPathSwitch');
+        const customPathSection = document.getElementById('customPathSection');
+        const customPathInput = document.getElementById('customPathInput');
+        const currentPathDisplay = document.getElementById('currentPathDisplay');
+        
+        useAppPathSwitch.checked = config.useAppPath !== false;
+        customPathInput.value = config.customPath || '';
+        currentPathDisplay.textContent = currentPath || 'Неизвестно';
+        
+        // Показываем/скрываем секцию кастомного пути
+        const toggleCustomPath = () => {
+          customPathSection.style.display = useAppPathSwitch.checked ? 'none' : 'block';
+        };
+        toggleCustomPath();
+        
+        useAppPathSwitch.addEventListener('change', toggleCustomPath);
+        
+        // Обработка формы пути
+        document.getElementById('pathSettingsForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const useAppPath = useAppPathSwitch.checked;
+          const customPath = customPathInput.value.trim();
+          
+          if (!useAppPath && !customPath) {
+            alert('Укажите кастомный путь или включите использование папки приложения');
+            return;
+          }
+          
+          const res = await fetch('/api/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ useAppPath, customPath: useAppPath ? null : customPath })
+          });
+          
+          const data = await res.json();
+          if (data.success) {
+            currentPathDisplay.textContent = data.currentPath;
+            alert('Путь сохранения обновлён. Приложение будет перезапущено для применения изменений.');
+            // Перезагружаем страницу для применения изменений
+            setTimeout(() => window.location.reload(), 1000);
+          } else {
+            alert('Ошибка обновления пути');
+          }
+        });
+
         // Theme
         const isDark = config.theme === 'dark';
         const themeSwitch = document.getElementById('themeSwitch');

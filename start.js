@@ -2,6 +2,14 @@ const { app, BrowserWindow,dialog } = require('electron');
 const http = require('http');
 const path = require('path');
 
+// Запускаем миграцию данных при первом запуске
+try {
+  const { migrateData } = require('./migrate-data.js');
+  migrateData();
+} catch (error) {
+  console.log('Миграция данных не выполнена:', error.message);
+}
+
 // 1. Запускаем сервер из app.js
 require(path.join(__dirname, 'app.js'));
 
