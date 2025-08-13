@@ -1,0 +1,9 @@
+{
+  "cacheEnabled": true,
+  "cacheVersion": 1,
+  "theme": "light",
+  "autorun": false,
+  "chatHistoryLimit": 100,
+  "customPath": null,
+  "useAppPath": true
+}

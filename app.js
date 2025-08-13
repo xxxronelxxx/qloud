@@ -23,15 +23,9 @@ require('./backend/controllers/TorrentController').initSocket(io);
 const path = require('path');
 const engine = require('ejs-mate');
 
-
-const documentsPath  = (() => {
-  if (electronApp && typeof electronApp.getPath === 'function') {
-    return electronApp.getPath('documents');
-  }
-  const home = process.env.USERPROFILE || process.env.HOME || process.env.HOMEPATH || '';
-  return path.join(home, 'Documents');
-})();
-const uploadsPath    = path.join(documentsPath, 'Qloud', 'uploads');
+// Используем настройки для определения путей
+const Settings = require('./backend/models/SettingsModel');
+const uploadsPath = Settings.getUploadsPath();
 
 serverApp.use('/media', express.static(uploadsPath, {
   setHeaders(res, file) {
@@ -58,7 +52,6 @@ serverApp.set('view engine', 'ejs');
 serverApp.set('views', path.join(__dirname, 'views'));
 
 const YEAR_IN_MS = 365 * 24 * 60 * 60 * 1000;
-const Settings = require('./backend/models/SettingsModel');
 
 serverApp.use((req, res, next) => {
   const cfg = Settings.readConfig();
