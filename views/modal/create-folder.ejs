@@ -7,7 +7,7 @@
       </div>
       <div class="modal-body">
         <label for="new-folder-input" class="mb-3">Введите имя папки</label>
-        <input type="text" name="folderName" id="new-folder-input" class="form-control form-control-lg bg-body-secondary px-4 py-2 rounded-4 border-0" placeholder="Введите имя папки" required autofocus/>
+        <input type="text" name="folderName" id="new-folder-input" class="form-control form-control-lg bg-body-secondary px-4 py-2 rounded-4 border-0" placeholder="Введите имя папки" required/>
       </div>
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-secondary btn-lg rounded-4" data-bs-dismiss="modal">
@@ -21,24 +21,37 @@
   </div>
 </div>
 
-<script type="module">
+<script>
+document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById("create-folder-form");
     const input = document.getElementById("new-folder-input");
     const modal = document.getElementById("createFolderModal");
     
+    if (!form || !input || !modal) {
+        console.error('Не найдены элементы модального окна создания папки');
+        return;
+    }
+    
+    console.log('Модальное окно создания папки инициализировано');
+    
     // Автоматический фокус при открытии модального окна
     modal.addEventListener('shown.bs.modal', function () {
-        input.focus();
-        input.select();
+        console.log('Модальное окно открыто, устанавливаем фокус');
+        setTimeout(function() {
+            input.focus();
+            input.select();
+        }, 100);
     });
     
     // Очистка формы при закрытии
     modal.addEventListener('hidden.bs.modal', function () {
+        console.log('Модальное окно закрыто, очищаем форму');
         form.reset();
     });
     
-    form.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", async function(e) {
         e.preventDefault();
+        console.log('Форма отправлена');
         
         const submitBtn = form.querySelector('button[type="submit"]');
         const originalText = submitBtn.textContent;
@@ -47,6 +60,8 @@
         
         try {
             const name = input.value.trim();
+            console.log('Имя папки:', name);
+            
             if (!name) {
                 alert('Введите имя папки');
                 input.focus();
@@ -54,6 +69,8 @@
             }
             
             const url = window.location.search.replace("?fs=", "") || "/";
+            console.log('URL:', url);
+            
             const req = await fetch("/api/create-folder", {
                 method: "POST",
                 headers: {
@@ -66,11 +83,15 @@
             if (!req.ok) throw new Error("Ошибка сети");
             
             const res = await req.json();
+            console.log('Ответ сервера:', res);
+            
             if (res.status === false) throw new Error(res.msg || "Ошибка создания папки");
             
             // Закрываем модальное окно и перезагружаем страницу
             const modalInstance = bootstrap.Modal.getInstance(modal);
-            modalInstance.hide();
+            if (modalInstance) {
+                modalInstance.hide();
+            }
             window.location.reload();
             
         } catch (error) {
@@ -86,7 +107,18 @@
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
+            console.log('Нажат Enter');
             form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
         }
     });
+    
+    // Дополнительная отладка
+    input.addEventListener('focus', function() {
+        console.log('Поле ввода получило фокус');
+    });
+    
+    input.addEventListener('input', function() {
+        console.log('Введен текст:', this.value);
+    });
+});
 </script>

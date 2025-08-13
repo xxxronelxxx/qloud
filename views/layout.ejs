@@ -35,8 +35,8 @@
     <%- include("modal/preview-image") %>
     <%- body %>
 
-    <!-- скрипты с defer, плюс наша логика -->
-    <script src="assets/scripts/bootstrap.bundle.min.js" defer></script>
+    <!-- Bootstrap загружается синхронно для корректной работы модальных окон -->
+    <script src="assets/scripts/bootstrap.bundle.min.js"></script>
     <script src="assets/scripts/aos.js" defer></script>
     <script src="assets/scripts/qrcode.js" defer></script>
     <script type="module">
