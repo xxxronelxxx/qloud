@@ -67,6 +67,16 @@ class FileSystemModel {
 
         // 2) Фоллбэк по расширению
         const ext = path.extname(filePath).toLowerCase();
+        
+        // Отладочная информация для JPG файлов
+        if (ext === '.jpg' || ext === '.jpeg') {
+            console.log(`🔍 Анализ JPG файла: ${filePath}`);
+            console.log(`📝 Расширение: ${ext}`);
+            console.log(`🎯 MIME тип: ${fullMime}`);
+            console.log(`📋 Тип из MIME: ${type}`);
+            console.log(`✅ В списке imageExt: ${this.imageExt.has(ext)}`);
+        }
+        
         if (this.videoExt.has(ext)) return { type: "video", mime: fullMime };
         if (this.audioExt.has(ext)) return { type: 'audio', mime: fullMime };
         if (this.imageExt.has(ext)) return { type: 'image', mime: fullMime };
@@ -229,12 +239,22 @@ class FileSystemModel {
             const isDir = dirent.isDirectory();
             const fullMime = isDir ? null : mime.lookup(itemPath) || 'unknown';
             const mimeType = fullMime ? fullMime.split('/')[0] : null;
+            
+            const mediaType = this.classifyMediaType(itemPath);
+            const icon = mediaType.type || "other";
+            
+            // Отладочная информация для JPG файлов
+            if (path.extname(itemPath).toLowerCase() === '.jpg' || path.extname(itemPath).toLowerCase() === '.jpeg') {
+                console.log(`📁 Файл: ${name}`);
+                console.log(`🎯 MediaType: ${JSON.stringify(mediaType)}`);
+                console.log(`🖼️ Icon: ${icon}`);
+            }
 
             return {
                 name,
                 path: base64Path,
                 type: isDir ? 'directory' : 'file',
-                icon: this.classifyMediaType(itemPath).type || "other",
+                icon: icon,
                 mime: mimeType,
                 fullMime,
                 size: isDir ? null : this.formatBytes(stats.size),
