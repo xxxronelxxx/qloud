@@ -13,24 +13,42 @@ try {
 // 1. Запускаем сервер из app.js
 require(path.join(__dirname, 'app.js'));
 
-function waitForServer(url, timeout = 10000) {
+function waitForServer(timeout = 10000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
+    const ports = [80, 3000]; // Проверяем оба порта
+    let currentPortIndex = 0;
+
+    console.log('🔍 Начинаем поиск сервера...');
 
     const check = () => {
+      const port = ports[currentPortIndex];
+      const url = `http://localhost:${port === 80 ? '' : port}/auth`;
+      
+      console.log(`🔍 Проверяем: ${url}`);
+      
       http.get(url, res => {
+        console.log(`✅ Сервер отвечает на ${url}, статус: ${res.statusCode}`);
         if ([200, 404].includes(res.statusCode)) {
-          resolve(); // сервер запущен
+          console.log(`🎉 Сервер найден на порту ${port}`);
+          resolve(port); // сервер запущен
         } else {
+          console.log(`⚠️ Неожиданный статус: ${res.statusCode}, пробуем дальше`);
           retry();
         }
-      }).on('error', retry);
+      }).on('error', (err) => {
+        console.log(`❌ Ошибка при проверке ${url}: ${err.message}`);
+        retry();
+      });
     };
 
     const retry = () => {
       if (Date.now() - start > timeout) {
+        console.log(`⏰ Таймаут поиска сервера (${timeout}ms)`);
         reject(new Error('Сервер не отвечает'));
       } else {
+        currentPortIndex = (currentPortIndex + 1) % ports.length;
+        console.log(`🔄 Переключаемся на следующий порт через 500ms`);
         setTimeout(check, 500);
       }
     };
@@ -41,7 +59,12 @@ function waitForServer(url, timeout = 10000) {
 
 async function createWindow() {
   try {
-    await waitForServer('http://localhost/auth');
+    console.log('🚀 Создаем окно Electron...');
+    const port = await waitForServer();
+    console.log(`✅ Получен порт: ${port}`);
+    
+    const baseUrl = port === 80 ? 'http://localhost' : `http://localhost:${port}`;
+    console.log(`🌐 Загружаем URL: ${baseUrl}`);
 
     const win = new BrowserWindow({
       width: 1000,
@@ -54,7 +77,9 @@ async function createWindow() {
       }
     });
     win.setMenu(null);
-    win.loadURL('http://localhost');
+    win.loadURL(baseUrl);
+    console.log('✅ Окно создано и URL загружен');
+    
     win.on('close', (e) => {
         const choice = dialog.showMessageBoxSync(win, {
             type: 'question',
@@ -71,7 +96,7 @@ async function createWindow() {
     });
     // win.webContents.openDevTools();
   } catch (err) {
-    console.error('Ошибка запуска сервера:', err.message);
+    console.error('💥 Ошибка запуска сервера:', err.message);
   }
 }
 
