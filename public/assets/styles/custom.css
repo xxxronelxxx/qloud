@@ -1,0 +1,53 @@
+/* Theme variables */
+:root[data-theme="light"] {
+  --bg: #ffffff;
+  --fg: #111827;
+  --bs-body-bg: #ffffff;
+  --bs-body-color: #212529;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0f19;
+  --fg: #e5e7eb;
+  --bs-body-bg: #0b0f19;
+  --bs-body-color: #e5e7eb;
+}
+
+body { background: var(--bs-body-bg); color: var(--bs-body-color); }
+.no-select {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.scale-hover {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    will-change: transform;
+}
+
+.scale-hover:hover {
+    transform: scale(1.05);
+}
+
+.hover:hover {
+    background-color: rgba(var(--bs-tertiary-bg-rgb), 0.8);
+}
+
+#app {
+    opacity: 0;
+}
+
+#app.loaded {
+    animation: fadeIn 0.25s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+    0% {
+        opacity: 0;
+    }
+
+    100% {
+        opacity: 1;
+    }
+}

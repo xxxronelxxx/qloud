@@ -1,0 +1,85 @@
+{
+  "name": "qloud",
+  "version": "1.0.6",
+  "description": "Qloud is a lightweight, offline-first media server and file manager",
+  "license": "MIT",
+  "author": "Flash",
+  "type": "commonjs",
+  "main": "start.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon .",
+    "server": "node .",
+    "start": "chcp 65001 > nul && electron .",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "build:win": "npm run version:patch && electron-builder --win",
+    "build:mac": "npm run version:patch && electron-builder --mac",
+    "build:linux": "npm run version:patch && electron-builder --linux",
+    "build:portable": "npm run version:patch && electron-builder --win portable"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "bonjour": "^3.5.0",
+    "cookie-parser": "^1.4.7",
+    "ejs": "^3.1.10",
+    "ejs-mate": "^4.0.0",
+    "express": "^5.1.0",
+    "file-type": "^16.5.4",
+    "mime-types": "^3.0.1",
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1",
+    "webtorrent": "^2.8.3"
+  },
+  "devDependencies": {
+    "electron": "^37.2.4",
+    "electron-builder": "^26.0.12",
+    "icon-gen": "^5.0.0",
+    "nodemon": "^3.1.10",
+    "npm-force-resolutions": "^0.0.10",
+    "png-to-ico": "^2.1.8",
+    "sharp": "^0.34.3"
+  },
+  "build": {
+    "appId": "com.flash.qloud",
+    "productName": "Qloud",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "backend/**/*",
+      "public/**/*",
+      "views/**/*",
+      "app.js",
+      "discover.js",
+      "start.js",
+      "test.js",
+      "package.json",
+      "!**/*.md",
+      "!**/*.log"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "msi"
+      ],
+      "icon": "public/icons/win-icons.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/icons/mac-icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "public/icons/logo.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": [
+      {
+        "provider": "github"
+      }
+    ]
+  }
+}

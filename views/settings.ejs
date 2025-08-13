@@ -1,0 +1,237 @@
+<% layout('layout') %>
+
+<%- include("modules/header.ejs") %>
+
+<main class="container-xxl py-4">
+  <h1 class="h3 mb-4">Настройки</h1>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Смена пароля администратора</h2>
+          <form id="changePassForm" class="d-grid gap-3">
+            <div>
+              <label class="form-label">Новый пароль</label>
+              <input type="password" id="newPassword" class="form-control rounded-4" placeholder="Введите новый пароль" required>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
+              <button class="btn btn-outline-secondary rounded-4" type="button" id="toggleNew">Показать</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Сброс пароля</h2>
+          <p class="text-muted">Удалит текущий пароль и вернёт приложение к режиму регистрации.</p>
+          <button id="resetPassBtn" class="btn btn-danger rounded-4">Сбросить пароль</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Кэш статических файлов</h2>
+          <div class="d-flex flex-wrap gap-3 align-items-center">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" role="switch" id="cacheSwitch">
+              <label class="form-check-label" for="cacheSwitch">Включить кэш</label>
+            </div>
+            <button class="btn btn-outline-warning rounded-4" id="invalidateCacheBtn">Очистить кэш</button>
+            <span class="small text-muted" id="cacheVer"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">История чата</h2>
+          <form id="chatSettingsForm" class="d-grid gap-3">
+            <div>
+              <label class="form-label">Лимит сообщений</label>
+              <input type="number" min="10" max="10000" step="10" id="chatLimit" class="form-control rounded-4" placeholder="Например, 100">
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
+              <button class="btn btn-outline-danger rounded-4" type="button" id="clearChatBtn">Очистить историю</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-1">
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Параметры интерфейса</h2>
+          <form id="uiSettingsForm" class="d-grid gap-3">
+            <div class="d-flex flex-wrap gap-3 align-items-center">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="themeSwitch">
+                <label class="form-check-label" for="themeSwitch">Тёмная тема</label>
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="autorunSwitch">
+                <label class="form-check-label" for="autorunSwitch">Автозапуск (Windows)</label>
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-success rounded-4" type="submit">Сохранить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">О приложении</h2>
+          <div class="text-muted small">
+            Qloud — медиа‑сервер и файловый менеджер. Автор: Flash.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const asciiRe = /^[\x21-\x7E]+$/;
+
+  const toggle = (input, btn) => {
+    if (input.type === 'password') { input.type = 'text'; btn.textContent = 'Скрыть'; }
+    else { input.type = 'password'; btn.textContent = 'Показать'; }
+  }
+
+  document.getElementById('toggleNew').addEventListener('click', () => toggle(document.getElementById('newPassword'), document.getElementById('toggleNew')));
+
+  document.getElementById('changePassForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const newPassword = document.getElementById('newPassword').value.trim();
+    if (!newPassword) return alert('Введите пароль');
+    if (!asciiRe.test(newPassword)) return alert('Разрешены только латинские буквы, цифры и спецсимволы без пробелов');
+
+    const res = await fetch('/auth-api/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('Пароль обновлён');
+      document.getElementById('newPassword').value = '';
+    } else {
+      alert(data.msg || 'Ошибка обновления пароля');
+    }
+  });
+
+  document.getElementById('resetPassBtn').addEventListener('click', async () => {
+    if (!confirm('Вы уверены, что хотите сбросить пароль?')) return;
+    const res = await fetch('/auth-api/reset-password', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      alert('Пароль сброшен. Сейчас вы будете перенаправлены на страницу регистрации.');
+      window.location.href = '/auth';
+    } else {
+      alert(data.msg || 'Ошибка сброса пароля');
+    }
+  });
+
+  // Bootstrap settings from API and wire up switches
+  (async () => {
+    try {
+      const res = await fetch('/api/settings');
+      const { config } = await res.json();
+      if (config) {
+        // Theme
+        const isDark = config.theme === 'dark';
+        const themeSwitch = document.getElementById('themeSwitch');
+        themeSwitch.checked = isDark;
+        const applyTheme = (t) => {
+          document.documentElement.setAttribute('data-theme', t);
+          document.documentElement.setAttribute('data-bs-theme', t);
+          try { localStorage.setItem('qloud_theme', t); } catch(e) {}
+        };
+        applyTheme(isDark ? 'dark' : 'light');
+        themeSwitch.onchange = (e) => {
+          const theme = e.target.checked ? 'dark' : 'light';
+          applyTheme(theme);
+        };
+
+        // Autorun (Windows)
+        const autorunSwitch = document.getElementById('autorunSwitch');
+        autorunSwitch.checked = !!config.autorun;
+        autorunSwitch.onchange = async (e) => {
+          const autorun = !!e.target.checked;
+          await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autorun }) });
+          await fetch('/api/settings/autorun/apply', { method: 'POST' });
+        };
+
+        // Cache
+        const cacheSwitch = document.getElementById('cacheSwitch');
+        cacheSwitch.checked = !!config.cacheEnabled;
+        document.getElementById('cacheVer').textContent = `Версия кэша: ${config.cacheVersion || 1}`;
+        cacheSwitch.onchange = async (e) => {
+          const cacheEnabled = !!e.target.checked;
+          await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cacheEnabled }) });
+        };
+        document.getElementById('invalidateCacheBtn').addEventListener('click', async () => {
+          const r = await fetch('/api/settings/cache/invalidate', { method: 'POST' });
+          const d = await r.json();
+          if (d && d.success) {
+            document.getElementById('cacheVer').textContent = `Версия кэша: ${d.config.cacheVersion}`;
+            alert('Кэш обновлён. Обновите страницу (Ctrl+F5)');
+          }
+        });
+
+        // Chat settings
+        const chatLimit = document.getElementById('chatLimit');
+        chatLimit.value = config.chatHistoryLimit || 100;
+        document.getElementById('chatSettingsForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const val = parseInt(chatLimit.value, 10);
+          if (!Number.isInteger(val) || val <= 0) return alert('Введите корректное число');
+          await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatHistoryLimit: val }) });
+          // попросим чат применить лимит
+          try {
+            const s = window.io && window.io();
+            if (s) s.emit('chat:applyLimit');
+          } catch(_) {}
+          alert('Настройки чата сохранены');
+        });
+
+        document.getElementById('clearChatBtn').addEventListener('click', async () => {
+          if (!confirm('Очистить всю историю чата?')) return;
+          const r = await fetch('/api/settings/chat/clear', { method: 'POST' });
+          const d = await r.json();
+          if (d && d.success) alert('История чата очищена');
+        });
+      }
+    } catch (e) {}
+  })();
+
+  // Сохранение UI-настроек
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('uiSettingsForm');
+    if (!form) return;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const theme = document.getElementById('themeSwitch').checked ? 'dark' : 'light';
+      const autorun = document.getElementById('autorunSwitch').checked;
+      await fetch('/api/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme, autorun }) });
+      await fetch('/api/settings/autorun/apply', { method: 'POST' });
+      alert('Настройки интерфейса сохранены');
+    });
+  });
+</script>
+
