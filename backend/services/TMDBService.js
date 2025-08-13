@@ -9,6 +9,14 @@ const { URL } = require('url');
 const dns = require('dns').promises;
 const Settings = require('../models/SettingsModel');
 
+// Известные IP адреса TMDB API (резервные)
+const TMDB_IPS = [
+    '52.85.151.18',
+    '52.85.151.24', 
+    '52.85.151.28',
+    '52.85.151.48'
+];
+
 // Функция для выполнения HTTPS запросов с принудительным DNS
 async function makeHttpsRequest(url, params = {}) {
     try {
@@ -16,8 +24,21 @@ async function makeHttpsRequest(url, params = {}) {
         
         // Принудительно разрешаем DNS
         console.log(`🔍 Разрешаем DNS для: ${urlObj.hostname}`);
-        const addresses = await dns.resolve4(urlObj.hostname);
-        console.log(`✅ DNS разрешен: ${addresses.join(', ')}`);
+        let addresses;
+        
+        try {
+            addresses = await dns.resolve4(urlObj.hostname);
+            console.log(`✅ DNS разрешен: ${addresses.join(', ')}`);
+            
+            // Проверяем, не разрешился ли DNS в localhost
+            if (addresses.includes('127.0.0.1') || addresses.includes('::1')) {
+                console.log('⚠️ DNS разрешился в localhost, используем резервные IP');
+                addresses = TMDB_IPS;
+            }
+        } catch (dnsError) {
+            console.log('⚠️ DNS ошибка, используем резервные IP:', dnsError.message);
+            addresses = TMDB_IPS;
+        }
         
         // Добавляем параметры к URL
         Object.keys(params).forEach(key => {
@@ -26,55 +47,70 @@ async function makeHttpsRequest(url, params = {}) {
         
         console.log(`🌐 Выполняем HTTPS запрос: ${urlObj.toString()}`);
         
-        const options = {
-            hostname: urlObj.hostname,
-            port: urlObj.port || 443,
-            path: urlObj.pathname + urlObj.search,
-            method: 'GET',
-            headers: {
-                'User-Agent': 'Qloud/1.0',
-                'Accept': 'application/json',
-                'Host': urlObj.hostname
-            },
-            // Принудительно используем IPv4
-            family: 4,
-            // Отключаем проверку сертификата (только для отладки)
-            rejectUnauthorized: false
-        };
+        // Пробуем подключиться к каждому IP адресу
+        for (const ip of addresses) {
+            try {
+                console.log(`🔌 Пробуем подключиться к ${ip}...`);
+                
+                const options = {
+                    hostname: ip, // Используем IP напрямую
+                    port: 443,
+                    path: urlObj.pathname + urlObj.search,
+                    method: 'GET',
+                    headers: {
+                        'User-Agent': 'Qloud/1.0',
+                        'Accept': 'application/json',
+                        'Host': urlObj.hostname // Важно: указываем оригинальный hostname
+                    },
+                    family: 4,
+                    rejectUnauthorized: false
+                };
+                
+                const result = await new Promise((resolve, reject) => {
+                    const req = https.request(options, (res) => {
+                        let data = '';
+                        
+                        res.on('data', (chunk) => {
+                            data += chunk;
+                        });
+                        
+                        res.on('end', () => {
+                            console.log(`✅ HTTPS ответ получен от ${ip}, статус: ${res.statusCode}`);
+                            try {
+                                const jsonData = JSON.parse(data);
+                                resolve({ status: res.statusCode, data: jsonData });
+                            } catch (error) {
+                                reject(new Error(`Ошибка парсинга JSON: ${error.message}`));
+                            }
+                        });
+                    });
+                    
+                    req.on('error', (error) => {
+                        console.error(`💥 HTTPS ошибка для ${ip}: ${error.message}`);
+                        reject(error);
+                    });
+                    
+                    req.setTimeout(5000, () => {
+                        req.destroy();
+                        reject(new Error(`Таймаут для ${ip}`));
+                    });
+                    
+                    req.end();
+                });
+                
+                // Если успешно подключились, возвращаем результат
+                return result;
+                
+            } catch (ipError) {
+                console.log(`❌ Не удалось подключиться к ${ip}: ${ipError.message}`);
+                // Продолжаем с следующим IP
+                continue;
+            }
+        }
         
-        return new Promise((resolve, reject) => {
-            const req = https.request(options, (res) => {
-                let data = '';
-                
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
-                
-                res.on('end', () => {
-                    console.log(`✅ HTTPS ответ получен, статус: ${res.statusCode}`);
-                    try {
-                        const jsonData = JSON.parse(data);
-                        resolve({ status: res.statusCode, data: jsonData });
-                    } catch (error) {
-                        reject(new Error(`Ошибка парсинга JSON: ${error.message}`));
-                    }
-                });
-            });
-            
-            req.on('error', (error) => {
-                console.error(`💥 HTTPS ошибка: ${error.message}`);
-                console.error(`Код ошибки: ${error.code}`);
-                console.error(`Системная ошибка: ${error.syscall}`);
-                reject(error);
-            });
-            
-            req.setTimeout(10000, () => {
-                req.destroy();
-                reject(new Error('Таймаут запроса'));
-            });
-            
-            req.end();
-        });
+        // Если не удалось подключиться ни к одному IP
+        throw new Error('Не удалось подключиться ни к одному IP адресу TMDB');
+        
     } catch (error) {
         console.error(`💥 Ошибка DNS или запроса: ${error.message}`);
         throw error;
