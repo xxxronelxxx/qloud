@@ -5,5 +5,6 @@
   "autorun": false,
   "chatHistoryLimit": 100,
   "customPath": null,
-  "useAppPath": true
+  "useAppPath": true,
+  "tmdbApiKey": "test_api_key_123"
 }

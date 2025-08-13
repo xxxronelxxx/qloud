@@ -16,7 +16,8 @@ class SettingsController {
   }
 
   update = async (req, res) => {
-    const { cacheEnabled, theme, autorun, chatHistoryLimit, customPath, useAppPath } = req.body || {};
+    console.log('Settings update request:', req.body);
+    const { cacheEnabled, theme, autorun, chatHistoryLimit, customPath, useAppPath, tmdbApiKey } = req.body || {};
     const patch = {};
     if (typeof cacheEnabled === 'boolean') patch.cacheEnabled = cacheEnabled;
     if (['light', 'dark'].includes(theme)) patch.theme = theme;
@@ -24,9 +25,13 @@ class SettingsController {
     if (Number.isInteger(chatHistoryLimit) && chatHistoryLimit > 0 && chatHistoryLimit <= 10000) patch.chatHistoryLimit = chatHistoryLimit;
     if (typeof useAppPath === 'boolean') patch.useAppPath = useAppPath;
     if (typeof customPath === 'string' && customPath.trim()) patch.customPath = customPath.trim();
+    if (typeof tmdbApiKey === 'string') patch.tmdbApiKey = tmdbApiKey.trim();
+    
+    console.log('Settings patch:', patch);
     
     try {
       const cfg = Settings.saveConfig(patch);
+      console.log('Settings saved successfully:', cfg);
       res.json({ 
         success: true, 
         config: cfg,
@@ -35,6 +40,7 @@ class SettingsController {
         torrentsPath: Settings.getTorrentsPath()
       });
     } catch (error) {
+      console.error('Settings save error:', error);
       res.json({ 
         success: false, 
         msg: `Ошибка обновления настроек: ${error.message}` 
