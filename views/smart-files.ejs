@@ -102,11 +102,11 @@
             <div class="row">
               <div class="col-md-8">
                 <label class="form-label">Название фильма</label>
-                <input type="text" id="movieQuery" class="form-control rounded-4" placeholder="Название фильма" required>
+                <input type="text" id="movieQuery" class="form-control rounded-4" placeholder="Название фильма" required style="pointer-events: auto; user-select: text;">
               </div>
               <div class="col-md-4">
                 <label class="form-label">Год (опционально)</label>
-                <input type="number" id="movieYear" class="form-control rounded-4" placeholder="2023" min="1900" max="2030">
+                <input type="number" id="movieYear" class="form-control rounded-4" placeholder="2023" min="1900" max="2030" style="pointer-events: auto; user-select: text;">
               </div>
             </div>
             <div>
@@ -142,20 +142,86 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('Smart files page loaded');
+    
     // Проверка статуса системы
     checkSystemStatus();
     
     // Обновление статистики
     updateStats();
     
+    // Проверяем, что элементы существуют
+    const analyzeFileForm = document.getElementById('analyzeFileForm');
+    const processFileForm = document.getElementById('processFileForm');
+    const searchMovieForm = document.getElementById('searchMovieForm');
+    
+    console.log('Forms found:', {
+        analyzeFileForm: !!analyzeFileForm,
+        processFileForm: !!processFileForm,
+        searchMovieForm: !!searchMovieForm
+    });
+    
     // Обработчики форм
-    document.getElementById('analyzeFileForm').addEventListener('submit', analyzeFile);
-    document.getElementById('processFileForm').addEventListener('submit', processFile);
-    document.getElementById('searchMovieForm').addEventListener('submit', searchMovie);
-    document.getElementById('processDirectoryBtn').addEventListener('click', processDirectory);
-    document.getElementById('refreshStatusBtn').addEventListener('click', refreshStatus);
-    document.getElementById('clearCachesBtn').addEventListener('click', clearCaches);
-    document.getElementById('clearAnalysisBtn').addEventListener('click', clearAnalysis);
+    if (analyzeFileForm) {
+        analyzeFileForm.addEventListener('submit', analyzeFile);
+    }
+    if (processFileForm) {
+        processFileForm.addEventListener('submit', processFile);
+    }
+    if (searchMovieForm) {
+        searchMovieForm.addEventListener('submit', searchMovie);
+    }
+    
+    document.getElementById('processDirectoryBtn')?.addEventListener('click', processDirectory);
+    document.getElementById('refreshStatusBtn')?.addEventListener('click', refreshStatus);
+    document.getElementById('clearCachesBtn')?.addEventListener('click', clearCaches);
+    document.getElementById('clearAnalysisBtn')?.addEventListener('click', clearAnalysis);
+    
+    // Проверяем поля ввода
+    const movieQuery = document.getElementById('movieQuery');
+    const movieYear = document.getElementById('movieYear');
+    
+    console.log('Input fields found:', {
+        movieQuery: !!movieQuery,
+        movieYear: !!movieYear
+    });
+    
+    // Добавляем обработчики для отладки
+    if (movieQuery) {
+        movieQuery.addEventListener('input', function(e) {
+            console.log('Movie query input:', e.target.value);
+        });
+        movieQuery.addEventListener('focus', function() {
+            console.log('Movie query focused');
+        });
+        movieQuery.addEventListener('click', function() {
+            console.log('Movie query clicked');
+        });
+        movieQuery.addEventListener('keydown', function(e) {
+            console.log('Movie query keydown:', e.key);
+        });
+        // Убеждаемся, что поле доступно
+        movieQuery.disabled = false;
+        movieQuery.readOnly = false;
+    }
+    
+    if (movieYear) {
+        movieYear.addEventListener('input', function(e) {
+            console.log('Movie year input:', e.target.value);
+        });
+        movieYear.addEventListener('focus', function() {
+            console.log('Movie year focused');
+        });
+        movieYear.addEventListener('click', function() {
+            console.log('Movie year clicked');
+        });
+        movieYear.addEventListener('keydown', function(e) {
+            console.log('Movie year keydown:', e.key);
+        });
+        // Убеждаемся, что поле доступно
+        movieYear.disabled = false;
+        movieYear.readOnly = false;
+    }
     
     // Автообновление статуса каждые 5 секунд
     setInterval(refreshStatus, 5000);

@@ -16,7 +16,7 @@ const settings = new SettingsController();
 const adminOnly = require('../middleware/adminOnly');
 
 const SmartFileController = require('../controllers/SmartFileController');
-const smartFile = new SmartFileController();
+const smartFile = SmartFileController;
 
 
 router.get("/get-host",fs.handleHostConnection);

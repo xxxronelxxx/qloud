@@ -346,24 +346,32 @@
         const toggleTmdbKeyBtn = document.getElementById('toggleTmdbKey');
         const testTmdbBtn = document.getElementById('testTmdbBtn');
 
+        console.log('Loading TMDB settings...');
+        console.log('Config tmdbApiKey:', config.tmdbApiKey ? 'Установлен' : 'Не установлен');
         tmdbApiKeyInput.value = config.tmdbApiKey || '';
+        console.log('Input value set to:', tmdbApiKeyInput.value ? 'Установлен' : 'Не установлен');
         toggleTmdbKeyBtn.addEventListener('click', () => toggle(tmdbApiKeyInput, toggleTmdbKeyBtn));
 
         document.getElementById('tmdbSettingsForm').addEventListener('submit', async (e) => {
           e.preventDefault();
+          console.log('TMDB form submitted');
           const apiKey = tmdbApiKeyInput.value.trim();
+          console.log('API key:', apiKey ? 'Установлен' : 'Не установлен');
           if (!apiKey) return alert('Введите API ключ TMDB');
           if (!asciiRe.test(apiKey)) return alert('Разрешены только латинские буквы, цифры и спецсимволы без пробелов');
 
+          console.log('Sending API request...');
           const res = await fetch('/api/settings', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ tmdbApiKey: apiKey })
           });
+          console.log('Response status:', res.status);
           const data = await res.json();
+          console.log('Response data:', data);
           if (data.success) {
             alert('API ключ TMDB обновлён');
-            tmdbApiKeyInput.value = ''; // Очищаем поле после сохранения
+            // Не очищаем поле после сохранения
           } else {
             alert(data.msg || 'Ошибка обновления API ключа');
           }
@@ -371,18 +379,22 @@
 
         testTmdbBtn.addEventListener('click', async () => {
           const apiKey = tmdbApiKeyInput.value.trim();
+          console.log('Testing TMDB API key:', apiKey ? 'Установлен' : 'Не установлен');
           if (!apiKey) {
             alert('Введите API ключ TMDB для проверки');
             return;
           }
           try {
+            console.log('Testing TMDB API...');
             const res = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${apiKey}`);
+            console.log('TMDB test response status:', res.status);
             if (res.ok) {
               alert('API ключ TMDB действителен!');
             } else {
               alert('API ключ TMDB недействителен. Проверьте правильность ключа.');
             }
           } catch (error) {
+            console.error('TMDB test error:', error);
             alert('Ошибка при проверке API ключа: ' + error.message);
           }
         });

@@ -14,7 +14,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 
 const serverApp = express();
-const PORT = 80;
+const PORT = 3000;
 const http = require('http').createServer(serverApp);
 const io = require('socket.io')(http);
 require('./backend/controllers/ChatController').initSocket(io);
