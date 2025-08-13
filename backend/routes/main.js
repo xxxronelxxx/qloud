@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const router = Router();
+const path = require('path');
 
 // MIddleWares
 const authVerify = require("../middleware/authVerify");
@@ -25,6 +26,10 @@ router.get('/settings', authVerify, (req, res) => {
 
 router.get('/smart-files', authVerify, adminOnly, (req, res) => {
     res.render('smart-files', { title: 'Умная обработка файлов', cookies: req.cookies || {} });
+});
+
+router.get('/test-api', (req, res) => {
+    res.sendFile(path.join(__dirname, '../../test-api.html'));
 });
 
 router.get('/chat', authVerify, (req, res) => {
