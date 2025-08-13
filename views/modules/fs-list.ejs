@@ -25,6 +25,11 @@
         <div data-bs-toggle="dropdown" data-selected-dropdown="<%- index %>" data-fs-dropdown aria-expanded="false" data-fs-selected-name="<%- render.name %>" data-fs-selected-path="<%- render.path %>"
             class="text-center d-block text-decoration-none text-body hover rounded-4 p-3 scale-hover" data-fs>
             
+            <!-- Отладочная информация -->
+            <% if(render.name && (render.name.toLowerCase().endsWith('.jpg') || render.name.toLowerCase().endsWith('.jpeg'))) { %>
+                <!-- DEBUG: <%= render.name %> - type: <%= render.type %> - icon: <%= render.icon %> -->
+            <% } %>
+            
             <% if(render.type === "directory") { %>
                 <img src="/images/directory.png?v=1.0.3"
                     style="max-width: 100px;width:100%;margin:0 auto;aspect-ratio:1;" alt="" />
