@@ -23,6 +23,10 @@ router.get('/settings', authVerify, (req, res) => {
     res.render('settings', { title: 'Настройки', cookies: req.cookies || {} });
 });
 
+router.get('/smart-files', authVerify, adminOnly, (req, res) => {
+    res.render('smart-files', { title: 'Умная обработка файлов', cookies: req.cookies || {} });
+});
+
 router.get('/chat', authVerify, (req, res) => {
     res.render('chat', { title: 'Чаты', cookies: req.cookies || {} });
 });
