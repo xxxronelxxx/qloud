@@ -71,6 +71,13 @@ class SmartFileProcessor {
                         result.audioTracks = MediaInfoService.getAudioTracks(mediaInfo);
                         result.subtitles = MediaInfoService.getSubtitles(mediaInfo);
                     }
+                } else {
+                    // Если MediaInfo недоступен, получаем базовую информацию
+                    const basicInfo = await MediaInfoService.getBasicFileInfo(filePath);
+                    if (basicInfo) {
+                        result.mediaInfo = basicInfo;
+                        result.quality = this.guessQualityFromFileName(fileName);
+                    }
                 }
             }
 
@@ -79,6 +86,18 @@ class SmartFileProcessor {
             console.error('File analysis error:', error);
             return null;
         }
+    }
+
+    // Угадывание качества из названия файла
+    guessQualityFromFileName(fileName) {
+        const lowerName = fileName.toLowerCase();
+        
+        if (lowerName.includes('4k') || lowerName.includes('2160p')) return '4K';
+        if (lowerName.includes('1080p') || lowerName.includes('1920x1080')) return '1080p';
+        if (lowerName.includes('720p') || lowerName.includes('1280x720')) return '720p';
+        if (lowerName.includes('480p') || lowerName.includes('854x480')) return '480p';
+        
+        return 'Unknown';
     }
 
     // Обработка видео файла

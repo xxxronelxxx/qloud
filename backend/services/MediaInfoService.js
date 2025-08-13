@@ -9,16 +9,48 @@ class MediaInfoService {
     constructor() {
         this.cache = new Map();
         this.cacheTimeout = 60 * 60 * 1000; // 1 час
+        this.mediainfoPath = null;
+    }
+
+    // Поиск MediaInfo в системе
+    async findMediaInfo() {
+        if (this.mediainfoPath) {
+            return this.mediainfoPath;
+        }
+
+        const possiblePaths = [
+            // Windows
+            'mediainfo.exe',
+            'C:\\Program Files\\MediaInfo\\mediainfo.exe',
+            'C:\\Program Files (x86)\\MediaInfo\\mediainfo.exe',
+            path.join(process.cwd(), 'tools', 'mediainfo.exe'),
+            path.join(process.cwd(), 'mediainfo.exe'),
+            
+            // Linux/macOS
+            'mediainfo',
+            '/usr/bin/mediainfo',
+            '/usr/local/bin/mediainfo',
+            '/opt/homebrew/bin/mediainfo'
+        ];
+
+        for (const mediainfoPath of possiblePaths) {
+            try {
+                await execAsync(`"${mediainfoPath}" --version`);
+                this.mediainfoPath = mediainfoPath;
+                console.log(`MediaInfo найден: ${mediainfoPath}`);
+                return mediainfoPath;
+            } catch (error) {
+                // Продолжаем поиск
+            }
+        }
+
+        return null;
     }
 
     // Проверка доступности MediaInfo
     async isMediaInfoAvailable() {
-        try {
-            await execAsync('mediainfo --version');
-            return true;
-        } catch (error) {
-            return false;
-        }
+        const path = await this.findMediaInfo();
+        return !!path;
     }
 
     // Получение медиаинформации из файла
@@ -34,8 +66,14 @@ class MediaInfoService {
             // Проверяем существование файла
             await fs.access(filePath);
 
+            // Находим MediaInfo
+            const mediainfoPath = await this.findMediaInfo();
+            if (!mediainfoPath) {
+                throw new Error('MediaInfo не найден в системе');
+            }
+
             // Получаем информацию через MediaInfo
-            const { stdout } = await execAsync(`mediainfo --Output=JSON "${filePath}"`);
+            const { stdout } = await execAsync(`"${mediainfoPath}" --Output=JSON "${filePath}"`);
             const mediaInfo = JSON.parse(stdout);
 
             const result = this.parseMediaInfo(mediaInfo);
@@ -49,6 +87,28 @@ class MediaInfoService {
             return result;
         } catch (error) {
             console.error('MediaInfo Error:', error.message);
+            return null;
+        }
+    }
+
+    // Получение базовой информации о файле без MediaInfo
+    async getBasicFileInfo(filePath) {
+        try {
+            const stats = await fs.stat(filePath);
+            const ext = path.extname(filePath).toLowerCase();
+            
+            return {
+                general: {
+                    format: ext.substring(1).toUpperCase(),
+                    file_size: stats.size,
+                    duration: null
+                },
+                video: [],
+                audio: [],
+                text: []
+            };
+        } catch (error) {
+            console.error('Basic file info error:', error.message);
             return null;
         }
     }
@@ -174,6 +234,16 @@ class MediaInfoService {
             return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         }
         return null;
+    }
+
+    // Получение информации о MediaInfo
+    async getMediaInfoStatus() {
+        const isAvailable = await this.isMediaInfoAvailable();
+        return {
+            available: isAvailable,
+            path: this.mediainfoPath,
+            cacheSize: this.cache.size
+        };
     }
 
     // Очистка кэша

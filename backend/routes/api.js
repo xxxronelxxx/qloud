@@ -45,5 +45,6 @@ router.post('/smart/search-movie', adminOnly, smartFile.searchMovie);
 router.get('/smart/stats', adminOnly, smartFile.getStats);
 router.post('/smart/clear-caches', adminOnly, smartFile.clearCaches);
 router.get('/smart/check-mediainfo', adminOnly, smartFile.checkMediaInfo);
+router.get('/smart/check-tmdb', adminOnly, smartFile.checkTMDB);
 
 module.exports = router;

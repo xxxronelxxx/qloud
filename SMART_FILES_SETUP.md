@@ -15,13 +15,19 @@
 ### 1. MediaInfo
 Для получения медиаинформации из файлов необходимо установить MediaInfo:
 
+#### Установка MediaInfo
+
 #### Windows:
 ```bash
-# Через Chocolatey
+# Через Chocolatey (рекомендуется)
 choco install mediainfo
+
+# Или через Scoop
+scoop install mediainfo
 
 # Или скачать с официального сайта
 # https://mediaarea.net/en/MediaInfo/Download/Windows
+# Добавить в PATH после установки
 ```
 
 #### macOS:

@@ -55,7 +55,8 @@ class SettingsModel {
       autorun: false,
       chatHistoryLimit: 100,
       customPath: null, // кастомный путь для сохранения файлов
-      useAppPath: true // использовать путь приложения по умолчанию
+      useAppPath: true, // использовать путь приложения по умолчанию
+      tmdbApiKey: process.env.TMDB_API_KEY || '' // API ключ для TMDB
     };
 
     this._cache = null;

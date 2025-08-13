@@ -60,8 +60,18 @@ npm install
 ### Установка MediaInfo
 
 #### Windows:
-```bash
+```powershell
+# Через Chocolatey (рекомендуется)
 choco install mediainfo
+
+# Или через Scoop
+scoop install mediainfo
+
+# Или скачать с официального сайта
+# https://mediaarea.net/en/MediaInfo/Download/Windows
+# Добавить в PATH после установки
+
+# Для портативной версии - поместить mediainfo.exe в папку tools/
 ```
 
 #### macOS:
@@ -78,10 +88,7 @@ sudo yum install mediainfo  # CentOS/RHEL
 ### Настройка TMDB API (опционально)
 1. Зарегистрируйтесь на [The Movie Database](https://www.themoviedb.org/signup)
 2. Получите API ключ в [настройках](https://www.themoviedb.org/settings/api)
-3. Установите переменную окружения:
-```bash
-export TMDB_API_KEY=your_api_key_here
-```
+3. В приложении: Настройки → Умная обработка файлов → Введите API ключ
 
 ## 🚀 Запуск
 

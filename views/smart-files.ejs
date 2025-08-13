@@ -167,13 +167,15 @@ async function checkSystemStatus() {
         const mediainfoRes = await fetch('/api/smart/check-mediainfo');
         const mediainfoData = await mediainfoRes.json();
         const mediainfoStatus = document.getElementById('mediainfo-status');
-        mediainfoStatus.className = `badge ${mediainfoData.available ? 'bg-success' : 'bg-danger'}`;
+        mediainfoStatus.className = `badge ${mediainfoData.available ? 'bg-success' : 'bg-warning'}`;
         mediainfoStatus.textContent = mediainfoData.available ? 'Доступен' : 'Недоступен';
         
         // Проверка TMDB API
+        const tmdbRes = await fetch('/api/smart/check-tmdb');
+        const tmdbData = await tmdbRes.json();
         const tmdbStatus = document.getElementById('tmdb-status');
-        tmdbStatus.className = 'badge bg-success';
-        tmdbStatus.textContent = 'Доступен';
+        tmdbStatus.className = `badge ${tmdbData.available ? 'bg-success' : 'bg-warning'}`;
+        tmdbStatus.textContent = tmdbData.available ? 'Доступен' : 'Не настроен';
     } catch (error) {
         console.error('Error checking system status:', error);
     }

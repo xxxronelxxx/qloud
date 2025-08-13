@@ -1,9 +1,8 @@
 const axios = require('axios');
+const Settings = require('../models/SettingsModel');
 
 class TMDBService {
     constructor() {
-        // TMDB API ключ (можно получить на https://www.themoviedb.org/settings/api)
-        this.apiKey = process.env.TMDB_API_KEY || 'your_tmdb_api_key_here';
         this.baseURL = 'https://api.themoviedb.org/3';
         
         // Кэш для результатов поиска
@@ -11,9 +10,26 @@ class TMDBService {
         this.cacheTimeout = 24 * 60 * 60 * 1000; // 24 часа
     }
 
+    // Получение API ключа из настроек
+    getApiKey() {
+        const settings = Settings.readConfig();
+        return settings.tmdbApiKey || process.env.TMDB_API_KEY || '';
+    }
+
+    // Проверка доступности API
+    isApiAvailable() {
+        return !!this.getApiKey();
+    }
+
     // Поиск фильма по названию
     async searchMovie(query, year = null) {
         try {
+            const apiKey = this.getApiKey();
+            if (!apiKey) {
+                console.warn('TMDB API ключ не настроен');
+                return null;
+            }
+
             const cacheKey = `movie_${query}_${year}`;
             const cached = this.cache.get(cacheKey);
             
@@ -22,7 +38,7 @@ class TMDBService {
             }
 
             const params = {
-                api_key: this.apiKey,
+                api_key: apiKey,
                 query: query,
                 language: 'ru-RU',
                 include_adult: false
@@ -67,6 +83,12 @@ class TMDBService {
     // Получение детальной информации о фильме
     async getMovieDetails(movieId) {
         try {
+            const apiKey = this.getApiKey();
+            if (!apiKey) {
+                console.warn('TMDB API ключ не настроен');
+                return null;
+            }
+
             const cacheKey = `movie_details_${movieId}`;
             const cached = this.cache.get(cacheKey);
             
@@ -75,7 +97,7 @@ class TMDBService {
             }
 
             const params = {
-                api_key: this.apiKey,
+                api_key: apiKey,
                 language: 'ru-RU',
                 append_to_response: 'credits,genres'
             };
@@ -114,6 +136,12 @@ class TMDBService {
     // Получение жанров
     async getGenres() {
         try {
+            const apiKey = this.getApiKey();
+            if (!apiKey) {
+                console.warn('TMDB API ключ не настроен');
+                return [];
+            }
+
             const cacheKey = 'genres';
             const cached = this.cache.get(cacheKey);
             
@@ -122,7 +150,7 @@ class TMDBService {
             }
 
             const params = {
-                api_key: this.apiKey,
+                api_key: apiKey,
                 language: 'ru-RU'
             };
 

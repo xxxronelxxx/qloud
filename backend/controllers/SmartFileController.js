@@ -277,6 +277,17 @@ class SmartFileController {
             res.json({ success: false, error: error.message });
         }
     };
+
+    // Проверка доступности TMDB API
+    checkTMDB = async (req, res) => {
+        try {
+            const isAvailable = TMDBService.isApiAvailable();
+            res.json({ success: true, available: isAvailable });
+        } catch (error) {
+            console.error('Check TMDB error:', error);
+            res.json({ success: false, error: error.message });
+        }
+    };
 }
 
 module.exports = new SmartFileController();
