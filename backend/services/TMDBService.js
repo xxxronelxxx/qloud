@@ -30,10 +30,13 @@ class TMDBService {
                 return null;
             }
 
+            console.log(`🔍 Поиск фильма: "${query}"${year ? ` (${year})` : ''}`);
+
             const cacheKey = `movie_${query}_${year}`;
             const cached = this.cache.get(cacheKey);
             
             if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+                console.log('📋 Результат найден в кэше');
                 return cached.data;
             }
 
@@ -49,17 +52,35 @@ class TMDBService {
                 params.year = year;
             }
 
-            let response = await axios.get(`${this.baseURL}/search/movie`, { params });
+            console.log(`🌐 Запрос к TMDB API: ${this.baseURL}/search/movie`);
+            console.log(`📝 Параметры:`, params);
+
+            let response = await axios.get(`${this.baseURL}/search/movie`, { 
+                params,
+                timeout: 10000, // 10 секунд таймаут
+                headers: {
+                    'User-Agent': 'Qloud/1.0'
+                }
+            });
+            
+            console.log(`✅ Ответ получен, статус: ${response.status}`);
             
             // Если не найдено на русском, пробуем на английском
             if (!response.data.results || response.data.results.length === 0) {
                 console.log('Не найдено на русском, пробуем на английском...');
                 params.language = 'en-US';
-                response = await axios.get(`${this.baseURL}/search/movie`, { params });
+                response = await axios.get(`${this.baseURL}/search/movie`, { 
+                    params,
+                    timeout: 10000,
+                    headers: {
+                        'User-Agent': 'Qloud/1.0'
+                    }
+                });
             }
             
             if (response.data.results && response.data.results.length > 0) {
                 const movie = response.data.results[0];
+                console.log(`🎬 Найден фильм: ${movie.title} (${movie.release_date})`);
                 
                 // Получаем детальную информацию о фильме
                 const details = await this.getMovieDetails(movie.id);
@@ -72,11 +93,19 @@ class TMDBService {
                     });
                     return details;
                 }
+            } else {
+                console.log('❌ Фильм не найден');
             }
 
             return null;
         } catch (error) {
-            console.error('TMDB API Error:', error.message);
+            console.error('💥 TMDB API Error:', error.message);
+            if (error.code) {
+                console.error('Код ошибки:', error.code);
+            }
+            if (error.response) {
+                console.error('Ответ сервера:', error.response.status, error.response.data);
+            }
             return null;
         }
     }
@@ -90,10 +119,13 @@ class TMDBService {
                 return null;
             }
 
+            console.log(`📋 Получение деталей фильма ID: ${movieId}`);
+
             const cacheKey = `movie_details_${movieId}`;
             const cached = this.cache.get(cacheKey);
             
             if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+                console.log('📋 Детали найдены в кэше');
                 return cached.data;
             }
 
@@ -103,7 +135,18 @@ class TMDBService {
                 append_to_response: 'credits,genres'
             };
 
-            const response = await axios.get(`${this.baseURL}/movie/${movieId}`, { params });
+            console.log(`🌐 Запрос деталей: ${this.baseURL}/movie/${movieId}`);
+
+            const response = await axios.get(`${this.baseURL}/movie/${movieId}`, { 
+                params,
+                timeout: 10000,
+                headers: {
+                    'User-Agent': 'Qloud/1.0'
+                }
+            });
+            
+            console.log(`✅ Детали получены, статус: ${response.status}`);
+            
             const movie = response.data;
 
             const result = {
@@ -127,6 +170,8 @@ class TMDBService {
                 status: movie.status
             };
 
+            console.log(`🎬 Обработаны детали: ${result.title} (${result.year})`);
+
             // Кэшируем результат
             this.cache.set(cacheKey, {
                 data: result,
@@ -135,7 +180,13 @@ class TMDBService {
 
             return result;
         } catch (error) {
-            console.error('TMDB API Error:', error.message);
+            console.error('💥 TMDB API Error (детали):', error.message);
+            if (error.code) {
+                console.error('Код ошибки:', error.code);
+            }
+            if (error.response) {
+                console.error('Ответ сервера:', error.response.status, error.response.data);
+            }
             return null;
         }
     }
