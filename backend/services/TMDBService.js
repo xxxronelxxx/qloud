@@ -1,19 +1,61 @@
-const axios = require('axios');
+const https = require('https');
+const { URL } = require('url');
 const Settings = require('../models/SettingsModel');
 
-// Создаем экземпляр axios с явной конфигурацией
-const tmdbAxios = axios.create({
-    baseURL: 'https://api.themoviedb.org/3',
-    timeout: 10000,
-    headers: {
-        'User-Agent': 'Qloud/1.0',
-        'Accept': 'application/json'
-    },
-    // Явно указываем, что не используем прокси
-    proxy: false,
-    // Принудительно используем IPv4
-    family: 4
-});
+// Функция для выполнения HTTPS запросов
+function makeHttpsRequest(url, params = {}) {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(url);
+        
+        // Добавляем параметры к URL
+        Object.keys(params).forEach(key => {
+            urlObj.searchParams.append(key, params[key]);
+        });
+        
+        console.log(`🌐 Выполняем HTTPS запрос: ${urlObj.toString()}`);
+        
+        const options = {
+            hostname: urlObj.hostname,
+            port: urlObj.port || 443,
+            path: urlObj.pathname + urlObj.search,
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Qloud/1.0',
+                'Accept': 'application/json'
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = '';
+            
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+            
+            res.on('end', () => {
+                console.log(`✅ HTTPS ответ получен, статус: ${res.statusCode}`);
+                try {
+                    const jsonData = JSON.parse(data);
+                    resolve({ status: res.statusCode, data: jsonData });
+                } catch (error) {
+                    reject(new Error(`Ошибка парсинга JSON: ${error.message}`));
+                }
+            });
+        });
+        
+        req.on('error', (error) => {
+            console.error(`💥 HTTPS ошибка: ${error.message}`);
+            reject(error);
+        });
+        
+        req.setTimeout(10000, () => {
+            req.destroy();
+            reject(new Error('Таймаут запроса'));
+        });
+        
+        req.end();
+    });
+}
 
 class TMDBService {
     constructor() {
@@ -69,13 +111,7 @@ class TMDBService {
             console.log(`🌐 Запрос к TMDB API: ${this.baseURL}/search/movie`);
             console.log(`📝 Параметры:`, params);
 
-            let response = await tmdbAxios.get(`/search/movie`, { 
-                params,
-                timeout: 10000, // 10 секунд таймаут
-                headers: {
-                    'User-Agent': 'Qloud/1.0'
-                }
-            });
+            let response = await makeHttpsRequest(`${this.baseURL}/search/movie`, params);
             
             console.log(`✅ Ответ получен, статус: ${response.status}`);
             
@@ -83,13 +119,7 @@ class TMDBService {
             if (!response.data.results || response.data.results.length === 0) {
                 console.log('Не найдено на русском, пробуем на английском...');
                 params.language = 'en-US';
-                response = await tmdbAxios.get(`/search/movie`, { 
-                    params,
-                    timeout: 10000,
-                    headers: {
-                        'User-Agent': 'Qloud/1.0'
-                    }
-                });
+                response = await makeHttpsRequest(`${this.baseURL}/search/movie`, params);
             }
             
             if (response.data.results && response.data.results.length > 0) {
@@ -151,13 +181,7 @@ class TMDBService {
 
             console.log(`🌐 Запрос деталей: ${this.baseURL}/movie/${movieId}`);
 
-            const response = await tmdbAxios.get(`/movie/${movieId}`, { 
-                params,
-                timeout: 10000,
-                headers: {
-                    'User-Agent': 'Qloud/1.0'
-                }
-            });
+            const response = await makeHttpsRequest(`${this.baseURL}/movie/${movieId}`, params);
             
             console.log(`✅ Детали получены, статус: ${response.status}`);
             
@@ -226,7 +250,7 @@ class TMDBService {
                 language: 'ru-RU'
             };
 
-            const response = await tmdbAxios.get(`/genre/movie/list`, { params });
+            const response = await makeHttpsRequest(`${this.baseURL}/genre/movie/list`, params);
             
             // Кэшируем результат
             this.cache.set(cacheKey, {
