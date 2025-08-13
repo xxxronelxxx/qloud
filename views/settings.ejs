@@ -116,8 +116,8 @@
             <div>
               <label class="form-label">TMDB API ключ</label>
               <div class="input-group">
-                <input type="password" id="tmdbApiKey" class="form-control rounded-4" placeholder="Введите API ключ TMDB">
-                <button class="btn btn-outline-secondary rounded-4" type="button" id="toggleTmdbKey">Показать</button>
+                <input type="text" id="tmdbApiKey" class="form-control rounded-4" placeholder="Введите API ключ TMDB">
+                <button class="btn btn-outline-secondary rounded-4" type="button" id="toggleTmdbKey">Скрыть</button>
               </div>
               <div class="form-text">
                 Получите бесплатный ключ на <a href="https://www.themoviedb.org/settings/api" target="_blank">The Movie Database</a>
@@ -350,7 +350,15 @@
         console.log('Config tmdbApiKey:', config.tmdbApiKey ? 'Установлен' : 'Не установлен');
         tmdbApiKeyInput.value = config.tmdbApiKey || '';
         console.log('Input value set to:', tmdbApiKeyInput.value ? 'Установлен' : 'Не установлен');
-        toggleTmdbKeyBtn.addEventListener('click', () => toggle(tmdbApiKeyInput, toggleTmdbKeyBtn));
+        toggleTmdbKeyBtn.addEventListener('click', () => {
+            if (tmdbApiKeyInput.type === 'text') {
+                tmdbApiKeyInput.type = 'password';
+                toggleTmdbKeyBtn.textContent = 'Показать';
+            } else {
+                tmdbApiKeyInput.type = 'text';
+                toggleTmdbKeyBtn.textContent = 'Скрыть';
+            }
+        });
 
         document.getElementById('tmdbSettingsForm').addEventListener('submit', async (e) => {
           e.preventDefault();

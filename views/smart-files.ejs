@@ -102,7 +102,7 @@
             <div class="row">
               <div class="col-md-8">
                 <label class="form-label">Название фильма</label>
-                <input type="text" id="movieQuery" class="form-control rounded-4" placeholder="Название фильма" required style="pointer-events: auto; user-select: text;">
+                <input type="text" id="movieQuery" class="form-control rounded-4" placeholder="Введите название фильма на русском или английском" required style="pointer-events: auto; user-select: text;">
               </div>
               <div class="col-md-4">
                 <label class="form-label">Год (опционально)</label>
@@ -110,13 +110,18 @@
               </div>
             </div>
             <div>
-              <button class="btn btn-info rounded-4" type="submit">Найти фильм</button>
+              <button class="btn btn-info rounded-4" type="submit" id="searchBtn">
+                <span class="search-text">Найти фильм</span>
+                <span class="search-loading d-none">Поиск...</span>
+              </button>
             </div>
           </form>
           
-          <div id="searchResult" class="mt-3" style="display: none;">
-            <h3 class="h6">Результат поиска:</h3>
-            <div id="searchContent" class="bg-body-secondary rounded-3 p-3"></div>
+          <div id="searchResult" class="mt-4" style="display: none;">
+            <h3 class="h6 mb-3">Результат поиска:</h3>
+            <div id="searchContent" class="bg-body-secondary rounded-3 p-3">
+              <!-- Результаты будут добавлены через JavaScript -->
+            </div>
           </div>
         </div>
       </div>
@@ -446,14 +451,23 @@ async function searchMovie(e) {
     const query = document.getElementById('movieQuery').value.trim();
     const year = document.getElementById('movieYear').value.trim();
     
-    if (!query) return;
+    if (!query) {
+        alert('Введите название фильма');
+        return;
+    }
     
-    const submitBtn = e.target.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Поиск...';
-    submitBtn.disabled = true;
+    const searchBtn = document.getElementById('searchBtn');
+    const searchText = searchBtn.querySelector('.search-text');
+    const searchLoading = searchBtn.querySelector('.search-loading');
+    
+    // Показываем индикатор загрузки
+    searchText.classList.add('d-none');
+    searchLoading.classList.remove('d-none');
+    searchBtn.disabled = true;
     
     try {
+        console.log('Searching for movie:', query, year);
+        
         const res = await fetch('/api/smart/search-movie', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -464,17 +478,25 @@ async function searchMovie(e) {
         });
         
         const data = await res.json();
+        console.log('Search response:', data);
         
-        if (data.success) {
+        if (data.success && data.movie) {
             displaySearchResult(data.movie);
         } else {
-            alert('Фильм не найден: ' + data.error);
+            document.getElementById('searchContent').innerHTML = 
+                '<div class="alert alert-warning">Фильм не найден. Попробуйте изменить название или год.</div>';
+            document.getElementById('searchResult').style.display = 'block';
         }
     } catch (error) {
-        alert('Ошибка сети: ' + error.message);
+        console.error('Search error:', error);
+        document.getElementById('searchContent').innerHTML = 
+            '<div class="alert alert-danger">Ошибка поиска: ' + error.message + '</div>';
+        document.getElementById('searchResult').style.display = 'block';
     } finally {
-        submitBtn.textContent = originalText;
-        submitBtn.disabled = false;
+        // Скрываем индикатор загрузки
+        searchText.classList.remove('d-none');
+        searchLoading.classList.add('d-none');
+        searchBtn.disabled = false;
     }
 }
 
@@ -482,28 +504,69 @@ function displaySearchResult(movie) {
     const resultDiv = document.getElementById('searchResult');
     const contentDiv = document.getElementById('searchContent');
     
-    let html = '<div class="row">';
-    html += '<div class="col-md-8">';
-    html += `<h4>${movie.title} (${movie.year})</h4>`;
-    html += `<p><strong>Рейтинг:</strong> ${movie.rating}/10</p>`;
-    html += `<p><strong>Жанры:</strong> ${movie.genres ? movie.genres.join(', ') : 'Не указаны'}</p>`;
-    html += `<p><strong>Длительность:</strong> ${movie.runtime ? movie.runtime + ' мин' : 'Не указана'}</p>`;
-    if (movie.director) {
-        html += `<p><strong>Режиссер:</strong> ${movie.director}</p>`;
-    }
-    if (movie.cast) {
-        html += `<p><strong>В ролях:</strong> ${movie.cast.join(', ')}</p>`;
-    }
-    html += `<p><strong>Описание:</strong> ${movie.overview || 'Описание отсутствует'}</p>`;
-    html += '</div>';
+    let html = '<div class="row g-3">';
     
+    // Постер
     if (movie.poster_path) {
-        html += '<div class="col-md-4">';
-        html += `<img src="https://image.tmdb.org/t/p/w200${movie.poster_path}" class="img-fluid rounded" alt="Постер">`;
+        html += '<div class="col-md-3">';
+        html += `<img src="https://image.tmdb.org/t/p/w300${movie.poster_path}" class="img-fluid rounded shadow" alt="Постер ${movie.title}">`;
         html += '</div>';
     }
     
-    html += '</div>';
+    // Информация о фильме
+    html += '<div class="col-md-9">';
+    html += `<h4 class="mb-3">${movie.title} (${movie.year})</h4>`;
+    
+    // Рейтинг
+    if (movie.rating) {
+        html += `<div class="mb-2"><span class="badge bg-warning text-dark me-2">⭐ ${movie.rating.toFixed(1)}/10</span></div>`;
+    }
+    
+    // Жанры
+    if (movie.genres && movie.genres.length > 0) {
+        html += `<p class="mb-2"><strong>Жанры:</strong> ${movie.genres.join(', ')}</p>`;
+    }
+    
+    // Длительность
+    if (movie.runtime) {
+        html += `<p class="mb-2"><strong>Длительность:</strong> ${movie.runtime} мин</p>`;
+    }
+    
+    // Режиссер
+    if (movie.director) {
+        html += `<p class="mb-2"><strong>Режиссер:</strong> ${movie.director}</p>`;
+    }
+    
+    // Актеры
+    if (movie.cast && movie.cast.length > 0) {
+        html += `<p class="mb-2"><strong>В ролях:</strong> ${movie.cast.slice(0, 5).join(', ')}`;
+        if (movie.cast.length > 5) {
+            html += ` и еще ${movie.cast.length - 5}`;
+        }
+        html += '</p>';
+    }
+    
+    // Описание
+    if (movie.overview) {
+        html += `<div class="mb-3"><strong>Описание:</strong><br>${movie.overview}</div>`;
+    }
+    
+    // Дополнительная информация
+    if (movie.release_date) {
+        const releaseDate = new Date(movie.release_date).toLocaleDateString('ru-RU');
+        html += `<p class="mb-2"><strong>Дата выхода:</strong> ${releaseDate}</p>`;
+    }
+    
+    if (movie.budget && movie.budget > 0) {
+        html += `<p class="mb-2"><strong>Бюджет:</strong> $${movie.budget.toLocaleString()}</p>`;
+    }
+    
+    if (movie.revenue && movie.revenue > 0) {
+        html += `<p class="mb-2"><strong>Сборы:</strong> $${movie.revenue.toLocaleString()}</p>`;
+    }
+    
+    html += '</div>'; // col-md-9
+    html += '</div>'; // row
     
     contentDiv.innerHTML = html;
     resultDiv.style.display = 'block';
