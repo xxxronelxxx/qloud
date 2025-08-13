@@ -23,7 +23,7 @@ function waitForServer(timeout = 10000) {
 
     const check = () => {
       const port = ports[currentPortIndex];
-      const url = `http://localhost:${port === 80 ? '' : port}/auth`;
+      const url = port === 80 ? 'http://localhost/auth' : `http://localhost:${port}/auth`;
       
       console.log(`🔍 Проверяем: ${url}`);
       
