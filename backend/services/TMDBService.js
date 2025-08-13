@@ -1,11 +1,23 @@
+// Принудительно сбрасываем глобальные настройки Node.js
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
+process.env.HTTPS_PROXY = '';
+process.env.HTTP_PROXY = '';
+process.env.NO_PROXY = '';
+
 const https = require('https');
 const { URL } = require('url');
+const dns = require('dns').promises;
 const Settings = require('../models/SettingsModel');
 
-// Функция для выполнения HTTPS запросов
-function makeHttpsRequest(url, params = {}) {
-    return new Promise((resolve, reject) => {
+// Функция для выполнения HTTPS запросов с принудительным DNS
+async function makeHttpsRequest(url, params = {}) {
+    try {
         const urlObj = new URL(url);
+        
+        // Принудительно разрешаем DNS
+        console.log(`🔍 Разрешаем DNS для: ${urlObj.hostname}`);
+        const addresses = await dns.resolve4(urlObj.hostname);
+        console.log(`✅ DNS разрешен: ${addresses.join(', ')}`);
         
         // Добавляем параметры к URL
         Object.keys(params).forEach(key => {
@@ -21,40 +33,52 @@ function makeHttpsRequest(url, params = {}) {
             method: 'GET',
             headers: {
                 'User-Agent': 'Qloud/1.0',
-                'Accept': 'application/json'
-            }
+                'Accept': 'application/json',
+                'Host': urlObj.hostname
+            },
+            // Принудительно используем IPv4
+            family: 4,
+            // Отключаем проверку сертификата (только для отладки)
+            rejectUnauthorized: false
         };
         
-        const req = https.request(options, (res) => {
-            let data = '';
-            
-            res.on('data', (chunk) => {
-                data += chunk;
+        return new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                let data = '';
+                
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                
+                res.on('end', () => {
+                    console.log(`✅ HTTPS ответ получен, статус: ${res.statusCode}`);
+                    try {
+                        const jsonData = JSON.parse(data);
+                        resolve({ status: res.statusCode, data: jsonData });
+                    } catch (error) {
+                        reject(new Error(`Ошибка парсинга JSON: ${error.message}`));
+                    }
+                });
             });
             
-            res.on('end', () => {
-                console.log(`✅ HTTPS ответ получен, статус: ${res.statusCode}`);
-                try {
-                    const jsonData = JSON.parse(data);
-                    resolve({ status: res.statusCode, data: jsonData });
-                } catch (error) {
-                    reject(new Error(`Ошибка парсинга JSON: ${error.message}`));
-                }
+            req.on('error', (error) => {
+                console.error(`💥 HTTPS ошибка: ${error.message}`);
+                console.error(`Код ошибки: ${error.code}`);
+                console.error(`Системная ошибка: ${error.syscall}`);
+                reject(error);
             });
+            
+            req.setTimeout(10000, () => {
+                req.destroy();
+                reject(new Error('Таймаут запроса'));
+            });
+            
+            req.end();
         });
-        
-        req.on('error', (error) => {
-            console.error(`💥 HTTPS ошибка: ${error.message}`);
-            reject(error);
-        });
-        
-        req.setTimeout(10000, () => {
-            req.destroy();
-            reject(new Error('Таймаут запроса'));
-        });
-        
-        req.end();
-    });
+    } catch (error) {
+        console.error(`💥 Ошибка DNS или запроса: ${error.message}`);
+        throw error;
+    }
 }
 
 class TMDBService {
