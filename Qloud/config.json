@@ -6,5 +6,5 @@
   "chatHistoryLimit": 100,
   "customPath": null,
   "useAppPath": true,
-  "tmdbApiKey": "test_api_key_123"
+  "tmdbApiKey": "test_api_key_debug_123"
 }

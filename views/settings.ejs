@@ -115,10 +115,7 @@
           <form id="tmdbSettingsForm" class="d-grid gap-3">
             <div>
               <label class="form-label">TMDB API ключ</label>
-              <div class="input-group">
-                <input type="text" id="tmdbApiKey" class="form-control rounded-4" placeholder="Введите API ключ TMDB">
-                <button class="btn btn-outline-secondary rounded-4" type="button" id="toggleTmdbKey">Скрыть</button>
-              </div>
+              <input type="text" id="tmdbApiKey" class="form-control rounded-4" placeholder="Введите API ключ TMDB">
               <div class="form-text">
                 Получите бесплатный ключ на <a href="https://www.themoviedb.org/settings/api" target="_blank">The Movie Database</a>
               </div>
@@ -343,47 +340,76 @@
 
         // TMDB API Key
         const tmdbApiKeyInput = document.getElementById('tmdbApiKey');
-        const toggleTmdbKeyBtn = document.getElementById('toggleTmdbKey');
         const testTmdbBtn = document.getElementById('testTmdbBtn');
+        const tmdbSettingsForm = document.getElementById('tmdbSettingsForm');
 
         console.log('Loading TMDB settings...');
         console.log('Config tmdbApiKey:', config.tmdbApiKey ? 'Установлен' : 'Не установлен');
-        tmdbApiKeyInput.value = config.tmdbApiKey || '';
-        console.log('Input value set to:', tmdbApiKeyInput.value ? 'Установлен' : 'Не установлен');
-        toggleTmdbKeyBtn.addEventListener('click', () => {
-            if (tmdbApiKeyInput.type === 'text') {
-                tmdbApiKeyInput.type = 'password';
-                toggleTmdbKeyBtn.textContent = 'Показать';
-            } else {
-                tmdbApiKeyInput.type = 'text';
-                toggleTmdbKeyBtn.textContent = 'Скрыть';
-            }
-        });
+        console.log('tmdbApiKeyInput found:', !!tmdbApiKeyInput);
+        console.log('tmdbSettingsForm found:', !!tmdbSettingsForm);
+        
+        if (tmdbApiKeyInput) {
+            tmdbApiKeyInput.value = config.tmdbApiKey || '';
+            console.log('Input value set to:', tmdbApiKeyInput.value ? 'Установлен' : 'Не установлен');
+        }
 
-        document.getElementById('tmdbSettingsForm').addEventListener('submit', async (e) => {
-          e.preventDefault();
-          console.log('TMDB form submitted');
-          const apiKey = tmdbApiKeyInput.value.trim();
-          console.log('API key:', apiKey ? 'Установлен' : 'Не установлен');
-          if (!apiKey) return alert('Введите API ключ TMDB');
-          if (!asciiRe.test(apiKey)) return alert('Разрешены только латинские буквы, цифры и спецсимволы без пробелов');
+        if (tmdbSettingsForm) {
+            console.log('Adding submit listener to tmdbSettingsForm');
+            tmdbSettingsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                console.log('TMDB form submitted');
+                
+                if (!tmdbApiKeyInput) {
+                    console.error('tmdbApiKeyInput not found');
+                    return;
+                }
+                
+                const apiKey = tmdbApiKeyInput.value.trim();
+                console.log('API key from input:', apiKey ? `"${apiKey}"` : 'ПУСТОЕ');
+                console.log('API key length:', apiKey.length);
+                
+                if (!apiKey) {
+                    alert('Введите API ключ TMDB');
+                    return;
+                }
+                
+                if (!asciiRe.test(apiKey)) {
+                    alert('Разрешены только латинские буквы, цифры и спецсимволы без пробелов');
+                    return;
+                }
 
-          console.log('Sending API request...');
-          const res = await fetch('/api/settings', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tmdbApiKey: apiKey })
-          });
-          console.log('Response status:', res.status);
-          const data = await res.json();
-          console.log('Response data:', data);
-          if (data.success) {
-            alert('API ключ TMDB обновлён');
-            // Не очищаем поле после сохранения
-          } else {
-            alert(data.msg || 'Ошибка обновления API ключа');
-          }
-        });
+                console.log('Sending API request...');
+                const requestBody = { tmdbApiKey: apiKey };
+                console.log('Request body:', requestBody);
+                
+                try {
+                    const res = await fetch('/api/settings', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                    console.log('Response status:', res.status);
+                    console.log('Response headers:', res.headers);
+                    
+                    const data = await res.json();
+                    console.log('Response data:', data);
+                    
+                    if (data.success) {
+                        alert('API ключ TMDB обновлён');
+                        console.log('Success! New config:', data.config);
+                        // Обновляем значение в поле
+                        tmdbApiKeyInput.value = data.config.tmdbApiKey || apiKey;
+                    } else {
+                        alert(data.msg || 'Ошибка обновления API ключа');
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    alert('Ошибка сети: ' + error.message);
+                }
+            });
+        } else {
+            console.error('tmdbSettingsForm not found');
+        }
 
         testTmdbBtn.addEventListener('click', async () => {
           const apiKey = tmdbApiKeyInput.value.trim();
