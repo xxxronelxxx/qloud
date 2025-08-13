@@ -1,13 +1,42 @@
 <div class="py-md-4">
     <div class="bg-dark rounded-4 border" style="max-width:1000px;width:100%; aspect-ratio:12/8;">
-        <video id="player" class="rounded-4" playsinline webkit-playsinline x5-playsinline controls preload="none"
-            style="width:100%; aspect-ratio:12/8;" src="<%-fileContent %>" loading="lazy" poster="/video-promo.png">
+        <video id="player" class="rounded-4" playsinline webkit-playsinline x5-playsinline controls preload="metadata"
+            style="width:100%; aspect-ratio:12/8;" src="<%-fileContent %>" loading="lazy">
         </video>
     </div>
 </div>
 
 <script>
     window.addEventListener("load",()=>{
-        document.getElementById("player").poster = "/video-promo.png";
+        const video = document.getElementById("player");
+        
+        // Создаем превью из видео
+        video.addEventListener('loadedmetadata', function() {
+            // Устанавливаем время на 1 секунду для создания превью
+            this.currentTime = 1;
+        });
+        
+        video.addEventListener('seeked', function() {
+            // Создаем canvas для превью
+            const canvas = document.createElement('canvas');
+            canvas.width = this.videoWidth;
+            canvas.height = this.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(this, 0, 0, canvas.width, canvas.height);
+            
+            // Конвертируем в base64 и устанавливаем как poster
+            const poster = canvas.toDataURL('image/jpeg', 0.8);
+            this.poster = poster;
+            
+            // Возвращаем время в начало
+            this.currentTime = 0;
+        });
+        
+        // Fallback на стандартное превью если что-то пошло не так
+        setTimeout(() => {
+            if (!video.poster || video.poster === '') {
+                video.poster = "/video-promo.png";
+            }
+        }, 3000);
     });
 </script>

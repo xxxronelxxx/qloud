@@ -24,8 +24,31 @@
         ondblclick="goTo('?fs=<%- render['path'] %>')" style="cursor: pointer;" data-context-dropdown>
         <div data-bs-toggle="dropdown" data-selected-dropdown="<%- index %>" data-fs-dropdown aria-expanded="false" data-fs-selected-name="<%- render.name %>" data-fs-selected-path="<%- render.path %>"
             class="text-center d-block text-decoration-none text-body hover rounded-4 p-3 scale-hover" data-fs>
-            <img src="/images/<%- render["type"]==="directory"?"directory":render.icon %>.png?v=1.0.3"
-                style="max-width: 100px;width:100%;margin:0 auto;aspect-ratio:1;" alt="" />
+            
+            <% if(render.type === "directory") { %>
+                <img src="/images/directory.png?v=1.0.3"
+                    style="max-width: 100px;width:100%;margin:0 auto;aspect-ratio:1;" alt="" />
+            <% } else if(render.icon === "image") { %>
+                <img src="/media<%- render.path %>" 
+                    style="max-width: 100px;width:100%;margin:0 auto;aspect-ratio:1; object-fit: cover;" 
+                    alt="<%- render.name %>" 
+                    loading="lazy"
+                    onerror="this.src='/images/image.png?v=1.0.3'" />
+            <% } else if(render.icon === "video") { %>
+                <video src="/media<%- render.path %>" 
+                    style="max-width: 100px;width:100%;margin:0 auto;aspect-ratio:1; object-fit: cover;" 
+                    preload="metadata"
+                    onloadedmetadata="this.currentTime=1"
+                    onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                </video>
+                <img src="/images/video.png?v=1.0.3" 
+                    style="max-width: 100px;width:100%;margin:0 auto;aspect-ratio:1; display:none;" 
+                    alt="" />
+            <% } else { %>
+                <img src="/images/<%- render.icon %>.png?v=1.0.3"
+                    style="max-width: 100px;width:100%;margin:0 auto;aspect-ratio:1;" alt="" />
+            <% } %>
+            
             <h6 class="mt-4 text-break"><%-shortenText(render['name']) %></h6>
         </div>
         <ul class="dropdown-menu px-1 py-2 rounded-4" data-bs-theme="dark">
