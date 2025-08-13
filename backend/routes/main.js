@@ -32,6 +32,10 @@ router.get('/test-api', (req, res) => {
     res.sendFile(path.join(__dirname, '../../test-api.html'));
 });
 
+router.get('/test-auth', (req, res) => {
+    res.sendFile(path.join(__dirname, '../../test-auth.html'));
+});
+
 router.get('/chat', authVerify, (req, res) => {
     res.render('chat', { title: 'Чаты', cookies: req.cookies || {} });
 });
