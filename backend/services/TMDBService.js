@@ -1,6 +1,20 @@
 const axios = require('axios');
 const Settings = require('../models/SettingsModel');
 
+// Создаем экземпляр axios с явной конфигурацией
+const tmdbAxios = axios.create({
+    baseURL: 'https://api.themoviedb.org/3',
+    timeout: 10000,
+    headers: {
+        'User-Agent': 'Qloud/1.0',
+        'Accept': 'application/json'
+    },
+    // Явно указываем, что не используем прокси
+    proxy: false,
+    // Принудительно используем IPv4
+    family: 4
+});
+
 class TMDBService {
     constructor() {
         this.baseURL = 'https://api.themoviedb.org/3';
@@ -55,7 +69,7 @@ class TMDBService {
             console.log(`🌐 Запрос к TMDB API: ${this.baseURL}/search/movie`);
             console.log(`📝 Параметры:`, params);
 
-            let response = await axios.get(`${this.baseURL}/search/movie`, { 
+            let response = await tmdbAxios.get(`/search/movie`, { 
                 params,
                 timeout: 10000, // 10 секунд таймаут
                 headers: {
@@ -69,7 +83,7 @@ class TMDBService {
             if (!response.data.results || response.data.results.length === 0) {
                 console.log('Не найдено на русском, пробуем на английском...');
                 params.language = 'en-US';
-                response = await axios.get(`${this.baseURL}/search/movie`, { 
+                response = await tmdbAxios.get(`/search/movie`, { 
                     params,
                     timeout: 10000,
                     headers: {
@@ -137,7 +151,7 @@ class TMDBService {
 
             console.log(`🌐 Запрос деталей: ${this.baseURL}/movie/${movieId}`);
 
-            const response = await axios.get(`${this.baseURL}/movie/${movieId}`, { 
+            const response = await tmdbAxios.get(`/movie/${movieId}`, { 
                 params,
                 timeout: 10000,
                 headers: {
@@ -212,7 +226,7 @@ class TMDBService {
                 language: 'ru-RU'
             };
 
-            const response = await axios.get(`${this.baseURL}/genre/movie/list`, { params });
+            const response = await tmdbAxios.get(`/genre/movie/list`, { params });
             
             // Кэшируем результат
             this.cache.set(cacheKey, {
