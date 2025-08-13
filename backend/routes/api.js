@@ -15,6 +15,9 @@ const SettingsController = require('../controllers/SettingsController');
 const settings = new SettingsController();
 const adminOnly = require('../middleware/adminOnly');
 
+const SmartFileController = require('../controllers/SmartFileController');
+const smartFile = new SmartFileController();
+
 
 router.get("/get-host",fs.handleHostConnection);
 router.get("/current-path",fs.currentPath);
@@ -32,5 +35,15 @@ router.patch('/settings', adminOnly, settings.update);
 router.post('/settings/cache/invalidate', adminOnly, settings.invalidateCache);
 router.post('/settings/autorun/apply', adminOnly, settings.applyAutorun);
 router.post('/settings/chat/clear', adminOnly, settings.clearChat);
+
+// Smart File Processing API
+router.post('/smart/process-file', adminOnly, smartFile.processFile);
+router.post('/smart/process-directory', adminOnly, smartFile.processDirectory);
+router.get('/smart/status', adminOnly, smartFile.getProcessingStatus);
+router.post('/smart/analyze-file', adminOnly, smartFile.analyzeFile);
+router.post('/smart/search-movie', adminOnly, smartFile.searchMovie);
+router.get('/smart/stats', adminOnly, smartFile.getStats);
+router.post('/smart/clear-caches', adminOnly, smartFile.clearCaches);
+router.get('/smart/check-mediainfo', adminOnly, smartFile.checkMediaInfo);
 
 module.exports = router;
