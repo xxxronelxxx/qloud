@@ -99,6 +99,8 @@ class SettingsModel {
     
     // Если изменился путь, нужно обновить projectPath и configPath
     if (patch.customPath !== undefined || patch.useAppPath !== undefined) {
+      const oldPath = this.projectPath;
+      
       if (current.useAppPath) {
         this.projectPath = this.appProjectPath;
         current.customPath = null;
@@ -107,13 +109,109 @@ class SettingsModel {
       } else {
         this.projectPath = this.defaultProjectPath;
       }
+      
+      const newPath = this.projectPath;
       this.configPath = path.join(this.projectPath, 'config.json');
+      
+      // Если путь действительно изменился, выполняем миграцию
+      if (oldPath !== newPath) {
+        this.migrateData(oldPath, newPath);
+      }
     }
     
     this.ensureDir();
     fs.writeFileSync(this.configPath, JSON.stringify(current, null, 2));
     this._cache = current;
     return current;
+  }
+
+  // Функция миграции данных
+  migrateData(oldPath, newPath) {
+    if (!fs.existsSync(oldPath)) {
+      // Старая папка не существует, просто создаем новую
+      fs.mkdirSync(newPath, { recursive: true });
+      return;
+    }
+
+    if (fs.existsSync(newPath)) {
+      // Новая папка уже существует, проверяем конфликты
+      const oldFiles = this.getAllFiles(oldPath);
+      const newFiles = this.getAllFiles(newPath);
+      
+      // Проверяем, есть ли конфликтующие файлы
+      const conflicts = oldFiles.filter(file => newFiles.includes(file));
+      if (conflicts.length > 0) {
+        throw new Error(`В новой папке уже существуют файлы: ${conflicts.join(', ')}`);
+      }
+    }
+
+    // Создаем новую папку
+    fs.mkdirSync(newPath, { recursive: true });
+
+    // Копируем все файлы и папки
+    this.copyRecursive(oldPath, newPath);
+    
+    console.log(`Данные успешно мигрированы из ${oldPath} в ${newPath}`);
+    
+    // Опционально: удаляем старые файлы после успешной миграции
+    // Это можно включить, если нужно полностью перенести данные
+    // this.removeRecursive(oldPath);
+  }
+
+  // Получить список всех файлов в папке
+  getAllFiles(dirPath, arrayOfFiles = []) {
+    if (!fs.existsSync(dirPath)) return arrayOfFiles;
+    
+    const files = fs.readdirSync(dirPath);
+
+    files.forEach(file => {
+      const fullPath = path.join(dirPath, file);
+      if (fs.statSync(fullPath).isDirectory()) {
+        arrayOfFiles = this.getAllFiles(fullPath, arrayOfFiles);
+      } else {
+        arrayOfFiles.push(path.relative(dirPath, fullPath));
+      }
+    });
+
+    return arrayOfFiles;
+  }
+
+  // Рекурсивное копирование папок и файлов
+  copyRecursive(src, dest) {
+    const stats = fs.statSync(src);
+    
+    if (stats.isDirectory()) {
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
+      }
+      
+      const files = fs.readdirSync(src);
+      files.forEach(file => {
+        const srcPath = path.join(src, file);
+        const destPath = path.join(dest, file);
+        this.copyRecursive(srcPath, destPath);
+      });
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+  }
+
+  // Рекурсивное удаление папок и файлов
+  removeRecursive(dirPath) {
+    if (!fs.existsSync(dirPath)) return;
+    
+    const files = fs.readdirSync(dirPath);
+    
+    files.forEach(file => {
+      const fullPath = path.join(dirPath, file);
+      if (fs.statSync(fullPath).isDirectory()) {
+        this.removeRecursive(fullPath);
+      } else {
+        fs.unlinkSync(fullPath);
+      }
+    });
+    
+    fs.rmdirSync(dirPath);
   }
 
   // Получить текущий путь для загрузок
