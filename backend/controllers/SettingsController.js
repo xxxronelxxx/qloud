@@ -15,7 +15,7 @@ class SettingsController {
     });
   }
 
-  update = (req, res) => {
+  update = async (req, res) => {
     const { cacheEnabled, theme, autorun, chatHistoryLimit, customPath, useAppPath } = req.body || {};
     const patch = {};
     if (typeof cacheEnabled === 'boolean') patch.cacheEnabled = cacheEnabled;
@@ -25,14 +25,21 @@ class SettingsController {
     if (typeof useAppPath === 'boolean') patch.useAppPath = useAppPath;
     if (typeof customPath === 'string' && customPath.trim()) patch.customPath = customPath.trim();
     
-    const cfg = Settings.saveConfig(patch);
-    res.json({ 
-      success: true, 
-      config: cfg,
-      currentPath: Settings.projectPath,
-      uploadsPath: Settings.getUploadsPath(),
-      torrentsPath: Settings.getTorrentsPath()
-    });
+    try {
+      const cfg = Settings.saveConfig(patch);
+      res.json({ 
+        success: true, 
+        config: cfg,
+        currentPath: Settings.projectPath,
+        uploadsPath: Settings.getUploadsPath(),
+        torrentsPath: Settings.getTorrentsPath()
+      });
+    } catch (error) {
+      res.json({ 
+        success: false, 
+        msg: `Ошибка обновления настроек: ${error.message}` 
+      });
+    }
   }
 
   // API для получения информации о путях

@@ -56,6 +56,16 @@
             <div class="alert alert-info">
               <strong>Текущий путь:</strong> <span id="currentPathDisplay">Загрузка...</span>
             </div>
+            <div class="alert alert-warning">
+              <strong>При изменении пути будут мигрированы:</strong>
+              <ul class="mb-0 mt-2">
+                <li>Загруженные файлы (uploads/)</li>
+                <li>Торрент файлы (torrents/)</li>
+                <li>История чата (chat.json)</li>
+                <li>Настройки (config.json)</li>
+                <li>Пароль администратора (password.txt)</li>
+              </ul>
+            </div>
             <div>
               <button class="btn btn-success rounded-4" type="submit">Сохранить</button>
             </div>
@@ -212,20 +222,34 @@
             return;
           }
           
-          const res = await fetch('/api/settings', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ useAppPath, customPath: useAppPath ? null : customPath })
-          });
+          // Показываем индикатор загрузки
+          const submitBtn = e.target.querySelector('button[type="submit"]');
+          const originalText = submitBtn.textContent;
+          submitBtn.textContent = 'Миграция данных...';
+          submitBtn.disabled = true;
           
-          const data = await res.json();
-          if (data.success) {
-            currentPathDisplay.textContent = data.currentPath;
-            alert('Путь сохранения обновлён. Приложение будет перезапущено для применения изменений.');
-            // Перезагружаем страницу для применения изменений
-            setTimeout(() => window.location.reload(), 1000);
-          } else {
-            alert('Ошибка обновления пути');
+          try {
+            const res = await fetch('/api/settings', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ useAppPath, customPath: useAppPath ? null : customPath })
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+              currentPathDisplay.textContent = data.currentPath;
+              alert('Путь сохранения обновлён и данные мигрированы успешно!');
+              // Перезагружаем страницу для применения изменений
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              alert('Ошибка обновления пути: ' + (data.msg || 'Неизвестная ошибка'));
+            }
+          } catch (error) {
+            alert('Ошибка сети: ' + error.message);
+          } finally {
+            // Восстанавливаем кнопку
+            submitBtn.textContent = originalText;
+            submitBtn.disabled = false;
           }
         });
 

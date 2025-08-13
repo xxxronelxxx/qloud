@@ -13,16 +13,9 @@ const { opendir } = require('fs').promises;
 
 class FileSystemModel {
     constructor() {
-        const projectName = 'Qloud';
-        const documentPath = (() => {
-            if (electronApp && typeof electronApp.getPath === 'function') {
-                return electronApp.getPath('documents');
-            }
-            const home = process.env.USERPROFILE || process.env.HOME || process.env.HOMEPATH || '';
-            return path.join(home, 'Documents');
-        })();
-        const docPath = path.posix.normalize(documentPath.replace(/\\/g, '/'));
-        this.projectPath = path.join(docPath, projectName, 'uploads');
+        // Используем настройки для определения пути
+        const Settings = require('./SettingsModel');
+        this.projectPath = Settings.getUploadsPath();
         this.allowedSet = new Set(['image', 'audio', 'video']);
         this.videoExt = new Set(['.3gp', '.3g2', '.avi', '.flv', '.mkv', '.mov', '.mp4', '.m4v', '.mpeg', '.mpg', '.ogv', '.webm', '.ts', '.mts', '.m2ts', '.rm', '.rmvb', '.vob', '.wmv', '.asf', '.divx', '.xvid']);
         this.audioExt = new Set(['.mp3', '.wav', '.flac', '.aac', '.m4a', '.wma', '.ogg', '.oga', '.alac', '.aiff', '.ape', '.amr', '.ac3', '.dts', '.opus', '.ra', '.ram', '.mid', '.midi', '.au', '.pcm', '.spx', '.caf', '.tta']);
