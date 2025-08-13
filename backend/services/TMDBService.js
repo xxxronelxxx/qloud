@@ -37,7 +37,8 @@ class TMDBService {
                 return cached.data;
             }
 
-            const params = {
+            // Сначала пробуем поиск на русском языке
+            let params = {
                 api_key: apiKey,
                 query: query,
                 language: 'ru-RU',
@@ -48,29 +49,29 @@ class TMDBService {
                 params.year = year;
             }
 
-            const response = await axios.get(`${this.baseURL}/search/movie`, { params });
+            let response = await axios.get(`${this.baseURL}/search/movie`, { params });
+            
+            // Если не найдено на русском, пробуем на английском
+            if (!response.data.results || response.data.results.length === 0) {
+                console.log('Не найдено на русском, пробуем на английском...');
+                params.language = 'en-US';
+                response = await axios.get(`${this.baseURL}/search/movie`, { params });
+            }
             
             if (response.data.results && response.data.results.length > 0) {
                 const movie = response.data.results[0];
-                const result = {
-                    id: movie.id,
-                    title: movie.title,
-                    original_title: movie.original_title,
-                    year: new Date(movie.release_date).getFullYear(),
-                    rating: movie.vote_average,
-                    overview: movie.overview,
-                    genres: movie.genre_ids, // ID жанров
-                    poster_path: movie.poster_path,
-                    backdrop_path: movie.backdrop_path
-                };
-
-                // Кэшируем результат
-                this.cache.set(cacheKey, {
-                    data: result,
-                    timestamp: Date.now()
-                });
-
-                return result;
+                
+                // Получаем детальную информацию о фильме
+                const details = await this.getMovieDetails(movie.id);
+                
+                if (details) {
+                    // Кэшируем результат
+                    this.cache.set(cacheKey, {
+                        data: details,
+                        timestamp: Date.now()
+                    });
+                    return details;
+                }
             }
 
             return null;
@@ -116,8 +117,14 @@ class TMDBService {
                 runtime: movie.runtime,
                 poster_path: movie.poster_path,
                 backdrop_path: movie.backdrop_path,
+                release_date: movie.release_date,
+                budget: movie.budget,
+                revenue: movie.revenue,
                 director: movie.credits?.crew?.find(c => c.job === 'Director')?.name,
-                cast: movie.credits?.cast?.slice(0, 5).map(a => a.name)
+                cast: movie.credits?.cast?.slice(0, 10).map(a => a.name),
+                production_companies: movie.production_companies?.map(c => c.name),
+                tagline: movie.tagline,
+                status: movie.status
             };
 
             // Кэшируем результат
