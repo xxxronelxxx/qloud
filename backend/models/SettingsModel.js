@@ -56,7 +56,8 @@ class SettingsModel {
       chatHistoryLimit: 100,
       customPath: null, // кастомный путь для сохранения файлов
       useAppPath: true, // использовать путь приложения по умолчанию
-      tmdbApiKey: process.env.TMDB_API_KEY || '' // API ключ для TMDB
+      kinozalLogin: '', // логин для kinozal.tv
+      kinozalPassword: '' // пароль для kinozal.tv
     };
 
     this._cache = null;

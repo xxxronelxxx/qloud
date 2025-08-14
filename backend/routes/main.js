@@ -24,9 +24,7 @@ router.get('/settings', authVerify, (req, res) => {
     res.render('settings', { title: 'Настройки', cookies: req.cookies || {} });
 });
 
-router.get('/smart-files', authVerify, adminOnly, (req, res) => {
-    res.render('smart-files', { title: 'Умная обработка файлов', cookies: req.cookies || {} });
-});
+
 
 router.get('/test-api', (req, res) => {
     res.sendFile(path.join(__dirname, '../../test-api.html'));
