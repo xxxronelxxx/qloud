@@ -28,6 +28,21 @@ class KinozalController {
     });
   }
 
+  // Создание простой сессии с минимальными заголовками
+  createSimpleSession() {
+    return axios.create({
+      baseURL: this.baseUrl,
+      timeout: 45000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      maxRedirects: 5,
+      validateStatus: function (status) {
+        return status >= 200 && status < 400;
+      }
+    });
+  }
+
   // Обновление cookies в сессии
   updateCookies(response) {
     if (response.headers['set-cookie']) {
@@ -38,10 +53,34 @@ class KinozalController {
     }
   }
 
+  // Проверка доступности сайта
+  async checkSiteAvailability() {
+    try {
+      console.log('Проверяем доступность сайта...');
+      const response = await axios.get(this.baseUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      console.log('Сайт доступен, статус:', response.status);
+      return true;
+    } catch (error) {
+      console.error('Сайт недоступен:', error.message);
+      return false;
+    }
+  }
+
   // Авторизация на сайте
   async login(login, password) {
     try {
       console.log('Начинаем авторизацию на Kinozal.tv...');
+      
+      // Проверяем доступность сайта
+      const isAvailable = await this.checkSiteAvailability();
+      if (!isAvailable) {
+        throw new Error('Сайт недоступен');
+      }
       
       // Создаем новую сессию
       this.session = this.createSession();
@@ -289,6 +328,12 @@ class KinozalController {
     try {
       console.log('Простое тестирование подключения к Kinozal.tv...');
       
+      // Проверяем доступность сайта
+      const isAvailable = await this.checkSiteAvailability();
+      if (!isAvailable) {
+        throw new Error('Сайт недоступен');
+      }
+      
       // Создаем новую сессию
       this.session = this.createSession();
       
@@ -384,15 +429,14 @@ class KinozalController {
     try {
       console.log('Альтернативная авторизация на Kinozal.tv...');
       
+      // Проверяем доступность сайта
+      const isAvailable = await this.checkSiteAvailability();
+      if (!isAvailable) {
+        throw new Error('Сайт недоступен');
+      }
+      
       // Создаем простую сессию
-      const simpleSession = axios.create({
-        baseURL: this.baseUrl,
-        timeout: 30000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        },
-        maxRedirects: 5
-      });
+      const simpleSession = this.createSimpleSession();
       
       // Получаем страницу входа
       console.log('Получаем страницу входа...');
@@ -468,6 +512,24 @@ class KinozalController {
       if (error.response) {
         console.error('Response status:', error.response.status);
       }
+      return false;
+    }
+  }
+
+  // Метод для проверки только доступности сайта
+  async testSiteAccess() {
+    try {
+      console.log('Проверяем доступность сайта Kinozal.tv...');
+      const isAvailable = await this.checkSiteAvailability();
+      if (isAvailable) {
+        console.log('Сайт доступен');
+        return true;
+      } else {
+        console.log('Сайт недоступен');
+        return false;
+      }
+    } catch (error) {
+      console.error('Ошибка проверки доступности:', error.message);
       return false;
     }
   }

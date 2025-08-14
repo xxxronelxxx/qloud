@@ -18,6 +18,12 @@ router.post('/test', async (req, res) => {
 
     console.log('Начинаем тестирование подключения к Kinozal.tv...');
     
+    // Сначала проверяем доступность сайта
+    const siteAvailable = await kinozalController.testSiteAccess();
+    if (!siteAvailable) {
+      return res.json({ success: false, msg: 'Сайт Kinozal.tv недоступен. Проверьте интернет-соединение.' });
+    }
+    
     // Пробуем все методы авторизации по очереди
     let success = false;
     
@@ -45,6 +51,22 @@ router.post('/test', async (req, res) => {
   } catch (error) {
     console.error('Kinozal test error:', error);
     res.json({ success: false, msg: 'Ошибка подключения: ' + error.message });
+  }
+});
+
+// Проверка доступности сайта
+router.get('/check-access', async (req, res) => {
+  try {
+    const isAvailable = await kinozalController.testSiteAccess();
+    
+    if (isAvailable) {
+      res.json({ success: true, msg: 'Сайт доступен' });
+    } else {
+      res.json({ success: false, msg: 'Сайт недоступен' });
+    }
+  } catch (error) {
+    console.error('Kinozal check access error:', error);
+    res.json({ success: false, msg: 'Ошибка проверки: ' + error.message });
   }
 });
 

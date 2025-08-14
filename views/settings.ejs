@@ -127,6 +127,7 @@
             <div class="d-flex gap-2">
               <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
               <button class="btn btn-outline-info rounded-4" type="button" id="testKinozalBtn">Проверить подключение</button>
+              <button class="btn btn-outline-secondary rounded-4" type="button" id="checkKinozalAccessBtn">Проверить доступность</button>
             </div>
           </form>
         </div>
@@ -447,6 +448,27 @@
             alert('Ошибка при проверке подключения: ' + error.message);
           }
         });
+
+        // Проверка доступности сайта
+        const checkKinozalAccessBtn = document.getElementById('checkKinozalAccessBtn');
+        if (checkKinozalAccessBtn) {
+          checkKinozalAccessBtn.addEventListener('click', async () => {
+            try {
+              console.log('Checking Kinozal site access...');
+              const res = await fetch('/api/kinozal/check-access');
+              
+              const data = await res.json();
+              if (data.success) {
+                alert('Сайт Kinozal.tv доступен!');
+              } else {
+                alert(data.msg || 'Сайт недоступен');
+              }
+            } catch (error) {
+              console.error('Kinozal access check error:', error);
+              alert('Ошибка при проверке доступности: ' + error.message);
+            }
+          });
+        }
       }
     } catch (e) {}
   })();
