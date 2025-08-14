@@ -16,7 +16,26 @@ router.post('/test', async (req, res) => {
       return res.json({ success: false, msg: 'Необходимо указать логин и пароль' });
     }
 
-    const success = await kinozalController.testConnection(login, password);
+    console.log('Начинаем тестирование подключения к Kinozal.tv...');
+    
+    // Пробуем все методы авторизации по очереди
+    let success = false;
+    
+    // 1. Простой тест
+    console.log('Пробуем простой тест...');
+    success = await kinozalController.simpleTestConnection(login, password);
+    
+    // 2. Альтернативный метод
+    if (!success) {
+      console.log('Простой тест не прошел, пробуем альтернативный метод...');
+      success = await kinozalController.alternativeLogin(login, password);
+    }
+    
+    // 3. Полный тест
+    if (!success) {
+      console.log('Альтернативный метод не прошел, пробуем полный тест...');
+      success = await kinozalController.testConnection(login, password);
+    }
     
     if (success) {
       res.json({ success: true, msg: 'Подключение успешно' });

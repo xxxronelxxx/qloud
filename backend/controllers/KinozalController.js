@@ -5,63 +5,118 @@ class KinozalController {
   constructor() {
     this.baseUrl = 'https://kinozal.tv';
     this.session = null;
+    this.cookies = [];
+  }
+
+  // Создание axios инстанса с правильными заголовками
+  createSession() {
+    return axios.create({
+      baseURL: this.baseUrl,
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+      },
+      maxRedirects: 5,
+      validateStatus: function (status) {
+        return status >= 200 && status < 400;
+      }
+    });
+  }
+
+  // Обновление cookies в сессии
+  updateCookies(response) {
+    if (response.headers['set-cookie']) {
+      this.cookies = response.headers['set-cookie'].map(cookie => {
+        return cookie.split(';')[0];
+      });
+      this.session.defaults.headers.Cookie = this.cookies.join('; ');
+    }
   }
 
   // Авторизация на сайте
   async login(login, password) {
     try {
-      // Получаем страницу входа для получения токенов
-      const loginPageResponse = await axios.get(`${this.baseUrl}/takelogin.php`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      });
-
+      console.log('Начинаем авторизацию на Kinozal.tv...');
+      
+      // Создаем новую сессию
+      this.session = this.createSession();
+      
+      // Получаем главную страницу для получения начальных cookies
+      console.log('Получаем главную страницу...');
+      const mainPageResponse = await this.session.get('/');
+      this.updateCookies(mainPageResponse);
+      
+      // Получаем страницу входа
+      console.log('Получаем страницу входа...');
+      const loginPageResponse = await this.session.get('/takelogin.php');
+      this.updateCookies(loginPageResponse);
+      
       const $ = cheerio.load(loginPageResponse.data);
       
-      // Ищем скрытые поля формы
+      // Проверяем, что мы на странице входа
+      const loginForm = $('form[action*="takelogin"]');
+      if (loginForm.length === 0) {
+        console.log('Форма входа не найдена, возможно уже авторизованы');
+        return true;
+      }
+      
+      // Собираем данные формы
       const formData = new URLSearchParams();
       formData.append('username', login);
       formData.append('password', password);
       formData.append('returnto', '');
       
       // Добавляем скрытые поля из формы
-      $('input[type="hidden"]').each((i, elem) => {
+      loginForm.find('input[type="hidden"]').each((i, elem) => {
         const name = $(elem).attr('name');
         const value = $(elem).attr('value');
         if (name && value) {
           formData.append(name, value);
         }
       });
-
+      
+      console.log('Отправляем данные авторизации...');
+      
       // Выполняем авторизацию
-      const loginResponse = await axios.post(`${this.baseUrl}/takelogin.php`, formData, {
+      const loginResponse = await this.session.post('/takelogin.php', formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        },
-        maxRedirects: 0,
-        validateStatus: function (status) {
-          return status >= 200 && status < 400; // Принимаем редиректы
+          'Origin': this.baseUrl,
+          'Referer': `${this.baseUrl}/takelogin.php`
         }
       });
-
-      // Сохраняем cookies для последующих запросов
-      this.session = axios.create({
-        baseURL: this.baseUrl,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      });
-
-      // Копируем cookies из ответа
-      if (loginResponse.headers['set-cookie']) {
-        this.session.defaults.headers.Cookie = loginResponse.headers['set-cookie'].join('; ');
+      
+      this.updateCookies(loginResponse);
+      
+      // Проверяем успешность авторизации
+      console.log('Проверяем результат авторизации...');
+      const checkResponse = await this.session.get('/');
+      const $check = cheerio.load(checkResponse.data);
+      
+      // Ищем признаки успешной авторизации
+      const userMenu = $check('.user-menu, .profile, .user-info');
+      const logoutLink = $check('a[href*="logout"], a[href*="exit"]');
+      const loginForm = $check('form[action*="takelogin"]');
+      
+      if (userMenu.length > 0 || logoutLink.length > 0 || loginForm.length === 0) {
+        console.log('Авторизация успешна!');
+        return true;
+      } else {
+        console.log('Авторизация не удалась');
+        return false;
       }
-
-      return true;
+      
     } catch (error) {
       console.error('Kinozal login error:', error.message);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+      }
       return false;
     }
   }
@@ -73,7 +128,9 @@ class KinozalController {
         throw new Error('Не выполнена авторизация');
       }
 
-      const searchUrl = `${this.baseUrl}/browse.php?s=${encodeURIComponent(query)}&g=0&c=0&v=0&d=0&w=0&t=0&f=0&o=1&p=${page}`;
+      console.log(`Поиск торрентов: "${query}", страница ${page}`);
+      
+      const searchUrl = `/browse.php?s=${encodeURIComponent(query)}&g=0&c=0&v=0&d=0&w=0&t=0&f=0&o=1&p=${page}`;
       
       const response = await this.session.get(searchUrl);
       const $ = cheerio.load(response.data);
@@ -81,9 +138,9 @@ class KinozalController {
       const torrents = [];
 
       // Парсим результаты поиска
-      $('.t_peer').each((i, elem) => {
+      $('.t_peer, tr[class*="t_"]').each((i, elem) => {
         const $row = $(elem);
-        const $titleCell = $row.find('.nam');
+        const $titleCell = $row.find('.nam, td:first-child');
         const $titleLink = $titleCell.find('a');
         
         if ($titleLink.length > 0) {
@@ -91,12 +148,12 @@ class KinozalController {
           const torrentUrl = $titleLink.attr('href');
           const torrentId = torrentUrl ? torrentUrl.match(/id=(\d+)/)?.[1] : null;
           
-          const size = $row.find('.s').text().trim();
-          const seeds = $row.find('.sl_s').text().trim();
-          const leeches = $row.find('.sl_l').text().trim();
-          const date = $row.find('.s').next().text().trim();
+          const size = $row.find('.s, td:nth-child(2)').text().trim();
+          const seeds = $row.find('.sl_s, td:nth-child(3)').text().trim();
+          const leeches = $row.find('.sl_l, td:nth-child(4)').text().trim();
+          const date = $row.find('td:last-child').text().trim();
 
-          if (torrentId) {
+          if (torrentId && title) {
             torrents.push({
               id: torrentId,
               title: title,
@@ -110,6 +167,7 @@ class KinozalController {
         }
       });
 
+      console.log(`Найдено торрентов: ${torrents.length}`);
       return torrents;
     } catch (error) {
       console.error('Kinozal search error:', error.message);
@@ -124,23 +182,25 @@ class KinozalController {
         throw new Error('Не выполнена авторизация');
       }
 
-      const torrentUrl = `${this.baseUrl}/details.php?id=${torrentId}`;
+      console.log(`Получение файлов торрента: ${torrentId}`);
+      
+      const torrentUrl = `/details.php?id=${torrentId}`;
       const response = await this.session.get(torrentUrl);
       const $ = cheerio.load(response.data);
 
       const files = [];
 
       // Парсим список файлов
-      $('.t_files tr').each((i, elem) => {
+      $('.t_files tr, table tr').each((i, elem) => {
         const $row = $(elem);
         const $cells = $row.find('td');
         
-        if ($cells.length >= 3) {
+        if ($cells.length >= 2) {
           const fileName = $cells.eq(0).text().trim();
           const fileSize = $cells.eq(1).text().trim();
           const filePath = $cells.eq(0).find('span').attr('title') || fileName;
 
-          if (fileName && fileSize) {
+          if (fileName && fileSize && fileName !== 'Имя файла') {
             files.push({
               name: fileName,
               path: filePath,
@@ -150,6 +210,7 @@ class KinozalController {
         }
       });
 
+      console.log(`Найдено файлов: ${files.length}`);
       return files;
     } catch (error) {
       console.error('Kinozal get files error:', error.message);
@@ -164,15 +225,35 @@ class KinozalController {
         throw new Error('Не выполнена авторизация');
       }
 
-      const downloadUrl = `${this.baseUrl}/download.php?id=${torrentId}`;
-      const response = await this.session.get(downloadUrl, {
+      console.log(`Получение magnet-ссылки для торрента: ${torrentId}`);
+      
+      // Сначала получаем страницу торрента
+      const detailsUrl = `/details.php?id=${torrentId}`;
+      const detailsResponse = await this.session.get(detailsUrl);
+      const $ = cheerio.load(detailsResponse.data);
+      
+      // Ищем magnet-ссылку на странице
+      const magnetLink = $('a[href^="magnet:"]').attr('href');
+      
+      if (magnetLink) {
+        console.log('Magnet-ссылка найдена на странице');
+        return magnetLink;
+      }
+      
+      // Если magnet-ссылка не найдена, пробуем скачать .torrent файл
+      console.log('Magnet-ссылка не найдена, пробуем скачать .torrent файл...');
+      
+      const downloadUrl = `/download.php?id=${torrentId}`;
+      const downloadResponse = await this.session.get(downloadUrl, {
         responseType: 'arraybuffer'
       });
 
       // Проверяем, что получили .torrent файл
-      const contentType = response.headers['content-type'];
+      const contentType = downloadResponse.headers['content-type'];
       if (contentType && contentType.includes('application/x-bittorrent')) {
-        // Возвращаем magnet-ссылку (в реальности нужно парсить .torrent файл)
+        // В реальности нужно парсить .torrent файл для получения magnet-ссылки
+        // Пока возвращаем заглушку
+        console.log('Получен .torrent файл');
         return `magnet:?xt=urn:btih:${torrentId}`;
       }
 
@@ -186,15 +267,207 @@ class KinozalController {
   // Тест подключения
   async testConnection(login, password) {
     try {
+      console.log('Тестирование подключения к Kinozal.tv...');
+      
       const success = await this.login(login, password);
       if (success) {
         // Пробуем выполнить простой поиск для проверки
-        await this.searchTorrents('test', 1);
+        console.log('Выполняем тестовый поиск...');
+        const torrents = await this.searchTorrents('test', 1);
+        console.log('Тестовый поиск выполнен успешно');
         return true;
       }
       return false;
     } catch (error) {
       console.error('Kinozal test connection error:', error.message);
+      return false;
+    }
+  }
+
+  // Простой тест подключения без поиска
+  async simpleTestConnection(login, password) {
+    try {
+      console.log('Простое тестирование подключения к Kinozal.tv...');
+      
+      // Создаем новую сессию
+      this.session = this.createSession();
+      
+      // Получаем главную страницу
+      console.log('Получаем главную страницу...');
+      const mainPageResponse = await this.session.get('/');
+      this.updateCookies(mainPageResponse);
+      console.log('Главная страница получена, статус:', mainPageResponse.status);
+      
+      // Получаем страницу входа
+      console.log('Получаем страницу входа...');
+      const loginPageResponse = await this.session.get('/takelogin.php');
+      this.updateCookies(loginPageResponse);
+      console.log('Страница входа получена, статус:', loginPageResponse.status);
+      
+      const $ = cheerio.load(loginPageResponse.data);
+      
+      // Проверяем, что мы на странице входа
+      const loginForm = $('form[action*="takelogin"]');
+      console.log('Найдено форм входа:', loginForm.length);
+      
+      if (loginForm.length === 0) {
+        console.log('Форма входа не найдена');
+        return false;
+      }
+      
+      // Собираем данные формы
+      const formData = new URLSearchParams();
+      formData.append('username', login);
+      formData.append('password', password);
+      formData.append('returnto', '');
+      
+      // Добавляем скрытые поля из формы
+      let hiddenFieldsCount = 0;
+      loginForm.find('input[type="hidden"]').each((i, elem) => {
+        const name = $(elem).attr('name');
+        const value = $(elem).attr('value');
+        if (name && value) {
+          formData.append(name, value);
+          hiddenFieldsCount++;
+        }
+      });
+      console.log('Добавлено скрытых полей:', hiddenFieldsCount);
+      
+      console.log('Отправляем данные авторизации...');
+      
+      // Выполняем авторизацию
+      const loginResponse = await this.session.post('/takelogin.php', formData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Origin': this.baseUrl,
+          'Referer': `${this.baseUrl}/takelogin.php`
+        }
+      });
+      
+      this.updateCookies(loginResponse);
+      console.log('Ответ на авторизацию получен, статус:', loginResponse.status);
+      
+      // Проверяем успешность авторизации
+      console.log('Проверяем результат авторизации...');
+      const checkResponse = await this.session.get('/');
+      const $check = cheerio.load(checkResponse.data);
+      
+      // Ищем признаки успешной авторизации
+      const userMenu = $check('.user-menu, .profile, .user-info');
+      const logoutLink = $check('a[href*="logout"], a[href*="exit"]');
+      const loginFormCheck = $check('form[action*="takelogin"]');
+      
+      console.log('Найдено элементов пользователя:', userMenu.length);
+      console.log('Найдено ссылок выхода:', logoutLink.length);
+      console.log('Найдено форм входа после авторизации:', loginFormCheck.length);
+      
+      if (userMenu.length > 0 || logoutLink.length > 0 || loginFormCheck.length === 0) {
+        console.log('Авторизация успешна!');
+        return true;
+      } else {
+        console.log('Авторизация не удалась');
+        return false;
+      }
+      
+    } catch (error) {
+      console.error('Kinozal simple test error:', error.message);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+      }
+      return false;
+    }
+  }
+
+  // Альтернативный метод авторизации с минимальными заголовками
+  async alternativeLogin(login, password) {
+    try {
+      console.log('Альтернативная авторизация на Kinozal.tv...');
+      
+      // Создаем простую сессию
+      const simpleSession = axios.create({
+        baseURL: this.baseUrl,
+        timeout: 30000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        },
+        maxRedirects: 5
+      });
+      
+      // Получаем страницу входа
+      console.log('Получаем страницу входа...');
+      const loginPageResponse = await simpleSession.get('/takelogin.php');
+      console.log('Страница входа получена, статус:', loginPageResponse.status);
+      
+      const $ = cheerio.load(loginPageResponse.data);
+      
+      // Проверяем, что мы на странице входа
+      const loginForm = $('form[action*="takelogin"]');
+      console.log('Найдено форм входа:', loginForm.length);
+      
+      if (loginForm.length === 0) {
+        console.log('Форма входа не найдена');
+        return false;
+      }
+      
+      // Собираем данные формы
+      const formData = new URLSearchParams();
+      formData.append('username', login);
+      formData.append('password', password);
+      formData.append('returnto', '');
+      
+      // Добавляем скрытые поля из формы
+      let hiddenFieldsCount = 0;
+      loginForm.find('input[type="hidden"]').each((i, elem) => {
+        const name = $(elem).attr('name');
+        const value = $(elem).attr('value');
+        if (name && value) {
+          formData.append(name, value);
+          hiddenFieldsCount++;
+        }
+      });
+      console.log('Добавлено скрытых полей:', hiddenFieldsCount);
+      
+      console.log('Отправляем данные авторизации...');
+      
+      // Выполняем авторизацию
+      const loginResponse = await simpleSession.post('/takelogin.php', formData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      
+      console.log('Ответ на авторизацию получен, статус:', loginResponse.status);
+      
+      // Проверяем успешность авторизации
+      console.log('Проверяем результат авторизации...');
+      const checkResponse = await simpleSession.get('/');
+      const $check = cheerio.load(checkResponse.data);
+      
+      // Ищем признаки успешной авторизации
+      const userMenu = $check('.user-menu, .profile, .user-info');
+      const logoutLink = $check('a[href*="logout"], a[href*="exit"]');
+      const loginFormCheck = $check('form[action*="takelogin"]');
+      
+      console.log('Найдено элементов пользователя:', userMenu.length);
+      console.log('Найдено ссылок выхода:', logoutLink.length);
+      console.log('Найдено форм входа после авторизации:', loginFormCheck.length);
+      
+      if (userMenu.length > 0 || logoutLink.length > 0 || loginFormCheck.length === 0) {
+        console.log('Альтернативная авторизация успешна!');
+        // Сохраняем сессию для дальнейшего использования
+        this.session = simpleSession;
+        return true;
+      } else {
+        console.log('Альтернативная авторизация не удалась');
+        return false;
+      }
+      
+    } catch (error) {
+      console.error('Kinozal alternative login error:', error.message);
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+      }
       return false;
     }
   }
