@@ -17,7 +17,7 @@ class SettingsController {
 
   update = async (req, res) => {
     console.log('Settings update request:', req.body);
-    const { cacheEnabled, theme, autorun, chatHistoryLimit, customPath, useAppPath, tmdbApiKey } = req.body || {};
+    const { cacheEnabled, theme, autorun, chatHistoryLimit, customPath, useAppPath, tmdbApiKey, kinozalLogin, kinozalPassword } = req.body || {};
     const patch = {};
     if (typeof cacheEnabled === 'boolean') patch.cacheEnabled = cacheEnabled;
     if (['light', 'dark'].includes(theme)) patch.theme = theme;
@@ -26,6 +26,8 @@ class SettingsController {
     if (typeof useAppPath === 'boolean') patch.useAppPath = useAppPath;
     if (typeof customPath === 'string' && customPath.trim()) patch.customPath = customPath.trim();
     if (typeof tmdbApiKey === 'string') patch.tmdbApiKey = tmdbApiKey.trim();
+    if (typeof kinozalLogin === 'string') patch.kinozalLogin = kinozalLogin.trim();
+    if (typeof kinozalPassword === 'string') patch.kinozalPassword = kinozalPassword.trim();
     
     console.log('Settings patch:', patch);
     
