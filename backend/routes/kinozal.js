@@ -5,7 +5,7 @@ const SettingsModel = require('../models/SettingsModel');
 
 // Создаем экземпляр контроллера
 const kinozalController = new KinozalController();
-const settingsModel = new SettingsModel();
+const settingsModel = SettingsModel;
 
 // Тест подключения к Kinozal.tv
 router.post('/test', async (req, res) => {

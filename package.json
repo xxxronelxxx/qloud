@@ -9,8 +9,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon .",
-    "server": "node .",
+    "server": "node server.js",
+    "server-only": "node app.js",
     "start": "chcp 65001 > nul && electron .",
+    "start:linux": "electron .",
     "version:patch": "npm version patch --no-git-tag-version",
     "build:win": "npm run version:patch && electron-builder --win",
     "build:mac": "npm run version:patch && electron-builder --mac",
