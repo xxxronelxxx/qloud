@@ -101,9 +101,9 @@ class KinozalController {
       // Ищем признаки успешной авторизации
       const userMenu = $check('.user-menu, .profile, .user-info');
       const logoutLink = $check('a[href*="logout"], a[href*="exit"]');
-      const loginForm = $check('form[action*="takelogin"]');
+      const loginFormCheck = $check('form[action*="takelogin"]');
       
-      if (userMenu.length > 0 || logoutLink.length > 0 || loginForm.length === 0) {
+      if (userMenu.length > 0 || logoutLink.length > 0 || loginFormCheck.length === 0) {
         console.log('Авторизация успешна!');
         return true;
       } else {
