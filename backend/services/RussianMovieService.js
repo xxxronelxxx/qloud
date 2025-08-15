@@ -1,6 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Settings = require('../models/SettingsModel');
+const RussianMoviesDB = require('./RussianMoviesDatabase');
 
 class RussianMovieService {
     constructor() {
@@ -22,15 +23,9 @@ class RussianMovieService {
         return settings.tmdbApiKey || process.env.TMDB_API_KEY || '';
     }
 
-    // Поиск русских фильмов через TMDB с фильтрацией
+    // Поиск русских фильмов с приоритетом локальной базы
     async searchRussianMovies(query, year = null) {
         try {
-            const apiKey = this.getApiKey();
-            if (!apiKey) {
-                console.warn('TMDB API ключ не настроен');
-                return null;
-            }
-
             console.log(`🔍 Поиск русских фильмов: "${query}"${year ? ` (${year})` : ''}`);
 
             const cacheKey = `russian_movie_${query}_${year}`;
@@ -39,6 +34,86 @@ class RussianMovieService {
             if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
                 console.log('📋 Результат найден в кэше');
                 return cached.data;
+            }
+
+            // 1. Сначала ищем в локальной базе данных
+            console.log('🔍 Поиск в локальной базе русских фильмов...');
+            const localResults = RussianMoviesDB.search(query, year);
+            
+            if (localResults.length > 0) {
+                const bestMatch = localResults[0];
+                console.log(`✅ Найден в локальной базе: ${bestMatch.title} (${bestMatch.year})`);
+                
+                // Форматируем результат в нужном формате
+                const result = this.formatLocalResult(bestMatch);
+                
+                this.cache.set(cacheKey, {
+                    data: result,
+                    timestamp: Date.now()
+                });
+                
+                return result;
+            }
+
+            // 2. Если не найден в локальной базе, пробуем TMDB с фильтрацией
+            console.log('🔍 Поиск в TMDB с фильтрацией русских фильмов...');
+            const tmdbResult = await this.searchTMDBWithFiltering(query, year);
+            
+            if (tmdbResult) {
+                this.cache.set(cacheKey, {
+                    data: tmdbResult,
+                    timestamp: Date.now()
+                });
+                return tmdbResult;
+            }
+
+            // 3. Если ничего не найдено, возвращаем null
+            console.log('❌ Русский фильм не найден ни в одном источнике');
+            return null;
+            
+        } catch (error) {
+            console.error('💥 Russian Movie Search Error:', error.message);
+            return null;
+        }
+    }
+
+    // Форматирование результата из локальной базы
+    formatLocalResult(item) {
+        return {
+            id: item.id,
+            title: item.title,
+            original_title: item.original_title,
+            year: item.year,
+            rating: item.rating,
+            overview: item.overview,
+            genres: item.genres,
+            runtime: item.runtime || item.episodes,
+            poster_path: null, // Локальная база не содержит постеров
+            backdrop_path: null,
+            release_date: `${item.year}-01-01`,
+            budget: null,
+            revenue: null,
+            director: item.director,
+            cast: item.cast,
+            production_companies: [],
+            tagline: '',
+            status: 'Released',
+            original_language: 'ru',
+            is_russian: true,
+            is_translation: false,
+            type: item.type,
+            episodes: item.episodes,
+            source: 'local_database'
+        };
+    }
+
+    // Поиск в TMDB с фильтрацией русских фильмов
+    async searchTMDBWithFiltering(query, year = null) {
+        try {
+            const apiKey = this.getApiKey();
+            if (!apiKey) {
+                console.warn('TMDB API ключ не настроен');
+                return null;
             }
 
             // Поиск на русском языке
@@ -77,76 +152,30 @@ class RussianMovieService {
 
                 if (russianMovies.length > 0) {
                     const movie = russianMovies[0];
-                    console.log(`🎬 Найден русский фильм: ${movie.title} (${movie.release_date})`);
+                    console.log(`🎬 Найден русский фильм в TMDB: ${movie.title} (${movie.release_date})`);
                     
                     const details = await this.getRussianMovieDetails(movie.id);
                     
                     if (details) {
-                        this.cache.set(cacheKey, {
-                            data: details,
-                            timestamp: Date.now()
-                        });
                         return details;
                     }
                 }
             }
 
-            // Если не найдено русских фильмов, пробуем поиск с русскими переводами
-            return await this.searchWithRussianTranslation(query, year);
-            
+            return null;
         } catch (error) {
-            console.error('💥 Russian Movie Search Error:', error.message);
+            console.error('💥 TMDB Search Error:', error.message);
             return null;
         }
     }
 
-    // Поиск фильмов с русскими переводами
-    async searchWithRussianTranslation(query, year = null) {
-        try {
-            const apiKey = this.getApiKey();
-            if (!apiKey) return null;
-
-            console.log(`🔍 Поиск фильмов с русскими переводами: "${query}"`);
-
-            // Поиск на русском языке для получения переведенных названий
-            let params = {
-                api_key: apiKey,
-                query: query,
-                language: 'ru-RU',
-                include_adult: false
-            };
-
-            if (year) {
-                params.year = year;
-            }
-
-            const response = await this.makeRequest(`${this.baseURL}/search/movie`, params);
-            
-            if (response.data.results && response.data.results.length > 0) {
-                const movie = response.data.results[0];
-                console.log(`🎬 Найден фильм с русским переводом: ${movie.title}`);
-                
-                const details = await this.getRussianMovieDetails(movie.id, true);
-                
-                if (details) {
-                    return details;
-                }
-            }
-
-            return null;
-        } catch (error) {
-            console.error('💥 Russian Translation Search Error:', error.message);
-            return null;
-        }
-    }
-
-    // Получение деталей русского фильма
+    // Получение детальной информации о фильме из TMDB
     async getRussianMovieDetails(movieId, isTranslation = false) {
         try {
             const apiKey = this.getApiKey();
             if (!apiKey) return null;
 
-            console.log(`📋 Получение деталей русского фильма ID: ${movieId}`);
+            console.log(`📋 Получение деталей фильма ID: ${movieId}`);
 
             const cacheKey = `russian_details_${movieId}_${isTranslation}`;
             const cached = this.cache.get(cacheKey);
@@ -191,7 +220,9 @@ class RussianMovieService {
                 original_language: movie.original_language,
                 is_russian: movie.original_language === 'ru',
                 russian_rating: russianRating,
-                is_translation: isTranslation
+                is_translation: isTranslation,
+                type: 'movie',
+                source: 'tmdb'
             };
 
             console.log(`🎬 Обработаны детали: ${result.title} (${result.year})`);
@@ -204,20 +235,6 @@ class RussianMovieService {
             return result;
         } catch (error) {
             console.error('💥 Russian Movie Details Error:', error.message);
-            return null;
-        }
-    }
-
-    // Поиск через Kinopoisk (альтернативный источник)
-    async searchKinopoisk(query) {
-        try {
-            console.log(`🔍 Поиск через Kinopoisk: "${query}"`);
-            
-            // Здесь можно добавить интеграцию с Kinopoisk API
-            // Пока возвращаем заглушку
-            return null;
-        } catch (error) {
-            console.error('💥 Kinopoisk Search Error:', error.message);
             return null;
         }
     }
@@ -299,11 +316,28 @@ class RussianMovieService {
 
     // Получение статистики
     getStats() {
+        const localStats = RussianMoviesDB.getStats();
         return {
             cacheSize: this.cache.size,
             cacheTimeout: this.cacheTimeout,
-            sources: Object.keys(this.sources)
+            sources: Object.keys(this.sources),
+            localDatabase: localStats
         };
+    }
+
+    // Получение всех фильмов из локальной базы
+    getAllLocalMovies() {
+        return RussianMoviesDB.getAllMovies();
+    }
+
+    // Получение всех сериалов из локальной базы
+    getAllLocalSeries() {
+        return RussianMoviesDB.getAllSeries();
+    }
+
+    // Добавление пользовательского фильма/сериала
+    addCustomItem(item) {
+        RussianMoviesDB.addCustomItem(item);
     }
 }
 

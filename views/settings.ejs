@@ -182,6 +182,9 @@
               <div class="alert alert-success">
                 <strong>Новая функция:</strong> Система теперь поддерживает поиск русских фильмов и фильмов с русскими переводами!
               </div>
+              <div class="alert alert-info">
+                <strong>Локальная база данных:</strong> Встроенная база содержит 8 популярных русских фильмов и 5 сериалов, включая "Ликвидацию", "Брат", "Левиафан" и другие.
+              </div>
             </div>
             <div class="col-12 col-md-6">
               <form id="translationForm" class="d-grid gap-3">
@@ -807,7 +810,8 @@
         
         if (data.success) {
           const stats = data.data;
-          russianStatsSpan.textContent = `Кэш: ${stats.cacheSize} записей`;
+          const localDB = stats.localDatabase;
+          russianStatsSpan.textContent = `Кэш: ${stats.cacheSize}, База: ${localDB.totalMovies} фильмов, ${localDB.totalSeries} сериалов`;
         } else {
           russianStatsSpan.textContent = 'Ошибка загрузки статистики';
         }
@@ -888,6 +892,8 @@
                   <p><strong>Язык оригинала:</strong> ${movie.original_language}</p>
                   <p><strong>Русский фильм:</strong> ${movie.is_russian ? 'Да' : 'Нет'}</p>
                   <p><strong>Перевод:</strong> ${movie.is_translation ? 'Да' : 'Нет'}</p>
+                  <p><strong>Источник:</strong> ${movie.source === 'local_database' ? 'Локальная база данных' : 'TMDB'}</p>
+                  <p><strong>Тип:</strong> ${movie.type === 'series' ? 'Сериал' : 'Фильм'}</p>
                 </div>
                 <div class="col-md-4">
                   ${movie.poster_path ? `<img src="https://image.tmdb.org/t/p/w200${movie.poster_path}" class="img-fluid rounded" alt="Постер">` : '<p>Постер недоступен</p>'}
