@@ -18,6 +18,7 @@ const settings = new SettingsController();
 const adminOnly = require('../middleware/adminOnly');
 
 const TMDBService = require('../services/TMDBService');
+const RussianMovieService = require('../services/RussianMovieService');
 
 
 router.get("/get-host",fs.handleHostConnection);
@@ -107,6 +108,45 @@ router.post('/tmdb/cache/clear', adminOnly, (req, res) => {
   try {
     TMDBService.clearCache();
     res.json({ success: true, msg: 'Кэш TMDB очищен' });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+// Russian Movie API
+router.post('/russian-movies/search', adminOnly, async (req, res) => {
+  try {
+    const { query, year } = req.body;
+    
+    if (!query) {
+      return res.json({ success: false, msg: 'Не указан поисковый запрос' });
+    }
+    
+    const result = await RussianMovieService.searchRussianMovies(query, year);
+    
+    if (result) {
+      res.json({ success: true, data: result });
+    } else {
+      res.json({ success: false, msg: 'Русский фильм не найден' });
+    }
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/russian-movies/stats', adminOnly, (req, res) => {
+  try {
+    const stats = RussianMovieService.getStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.post('/russian-movies/cache/clear', adminOnly, (req, res) => {
+  try {
+    RussianMovieService.clearCache();
+    res.json({ success: true, msg: 'Кэш русских фильмов очищен' });
   } catch (error) {
     res.json({ success: false, msg: error.message });
   }
