@@ -143,6 +143,24 @@
         </div>
       </div>
     </div>
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">TMDB API</h2>
+          <form id="tmdbSettingsForm" class="d-grid gap-3">
+            <div>
+              <label class="form-label">TMDB API ключ</label>
+              <input type="text" id="tmdbApiKey" class="form-control rounded-4" placeholder="Введите API ключ TMDB">
+              <div class="form-text">Получите ключ на themoviedb.org в настройках аккаунта</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
+              <button class="btn btn-outline-info rounded-4" type="button" id="testTmdbBtn">Проверить ключ</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="row g-4 mt-1">
@@ -489,6 +507,92 @@
             }
           });
         }
+
+        // TMDB API настройки
+        const tmdbApiKeyInput = document.getElementById('tmdbApiKey');
+        const tmdbSettingsForm = document.getElementById('tmdbSettingsForm');
+        const testTmdbBtn = document.getElementById('testTmdbBtn');
+
+        console.log('Loading TMDB settings...');
+        console.log('Config tmdbApiKey:', config.tmdbApiKey ? 'Установлен' : 'Не установлен');
+        console.log('tmdbApiKeyInput found:', !!tmdbApiKeyInput);
+        console.log('tmdbSettingsForm found:', !!tmdbSettingsForm);
+
+        if (tmdbApiKeyInput) {
+            tmdbApiKeyInput.value = config.tmdbApiKey || '';
+            console.log('TMDB API Key input value set to:', tmdbApiKeyInput.value ? 'Установлен' : 'Не установлен');
+        }
+
+        if (tmdbSettingsForm) {
+            console.log('Adding submit listener to tmdbSettingsForm');
+            tmdbSettingsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                console.log('TMDB form submitted');
+                
+                const apiKey = tmdbApiKeyInput.value.trim();
+                
+                if (!apiKey) {
+                    alert('Введите TMDB API ключ');
+                    return;
+                }
+
+                console.log('Sending API request...');
+                const requestBody = { tmdbApiKey: apiKey };
+                console.log('Request body:', requestBody);
+                
+                try {
+                    const res = await fetch('/api/settings', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                    console.log('Response status:', res.status);
+                    
+                    const data = await res.json();
+                    console.log('Response data:', data);
+                    
+                    if (data.success) {
+                        alert('Настройки TMDB API обновлены');
+                        console.log('Success! New config:', data.config);
+                    } else {
+                        alert(data.msg || 'Ошибка обновления настроек');
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    alert('Ошибка сети: ' + error.message);
+                }
+            });
+        } else {
+            console.error('tmdbSettingsForm not found');
+        }
+
+        testTmdbBtn.addEventListener('click', async () => {
+          const apiKey = tmdbApiKeyInput.value.trim();
+          
+          if (!apiKey) {
+            alert('Введите TMDB API ключ для проверки');
+            return;
+          }
+          
+          try {
+            console.log('Testing TMDB API connection...');
+            const res = await fetch('/api/tmdb/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiKey })
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+              alert('TMDB API успешно подключен!');
+            } else {
+              alert(data.msg || 'Ошибка подключения к TMDB API');
+            }
+          } catch (error) {
+            console.error('TMDB test error:', error);
+            alert('Ошибка при проверке подключения: ' + error.message);
+          }
+        });
       }
     } catch (e) {}
   })();

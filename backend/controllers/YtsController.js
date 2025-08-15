@@ -66,6 +66,12 @@ class YtsController {
   }
 
   async search(query, page = 1) {
+    // обновляем ключ на случай изменения в настройках без перезапуска
+    try {
+      const cfg = Settings.readConfig();
+      this.tmdbApiKey = (cfg && cfg.tmdbApiKey) || process.env.TMDB_API_KEY || '';
+    } catch (_) {}
+
     // Пробуем прямой поиск на YTS
     const url = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(query)}&page=${page}&limit=20`;
     const { data } = await axios.get(url, { timeout: 15000 });
