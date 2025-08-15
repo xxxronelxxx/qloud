@@ -1,6 +1,7 @@
 // routes.js (CommonJS)
 
 const { Router } = require('express');
+const axios = require('axios');
 
 const multer = require('multer');
 const storage = multer({ storage: multer.memoryStorage() });
@@ -39,11 +40,15 @@ router.post('/tmdb/test', adminOnly, async (req, res) => {
   try {
     const apiKey = (req.body && req.body.apiKey) || '';
     if (!apiKey) return res.json({ success: false, msg: 'Не указан apiKey' });
-    const r = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${apiKey}`);
-    if (r.ok) return res.json({ success: true });
-    return res.json({ success: false, msg: 'Ключ недействителен' });
+    const r = await axios.get('https://api.themoviedb.org/3/configuration', {
+      params: { api_key: apiKey },
+      timeout: 15000,
+      validateStatus: () => true
+    });
+    if (r.status === 200) return res.json({ success: true });
+    return res.json({ success: false, msg: `TMDB ответил статусом ${r.status}` });
   } catch (e) {
-    return res.json({ success: false, msg: e.message });
+    return res.json({ success: false, msg: e.message || 'Ошибка сети' });
   }
 });
 
