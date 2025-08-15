@@ -9,8 +9,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon .",
-    "server": "node .",
+    "server": "node server.js",
+    "server-only": "node app.js",
     "start": "chcp 65001 > nul && electron .",
+    "start:linux": "electron .",
     "version:patch": "npm version patch --no-git-tag-version",
     "build:win": "npm run version:patch && electron-builder --win",
     "build:mac": "npm run version:patch && electron-builder --mac",
@@ -21,6 +23,8 @@
     "axios": "^1.6.0",
     "bcryptjs": "^3.0.2",
     "bonjour": "^3.5.0",
+    "cheerio": "^1.1.2",
+    "parse-torrent": "^9.1.4",
     "cookie-parser": "^1.4.7",
     "ejs": "^3.1.10",
     "ejs-mate": "^4.0.0",
@@ -29,7 +33,9 @@
     "mime-types": "^3.0.1",
     "multer": "^2.0.2",
     "socket.io": "^4.8.1",
-    "webtorrent": "^2.8.3"
+    "webtorrent": "^2.8.3",
+    "https-proxy-agent": "^7.0.4",
+    "socks-proxy-agent": "^8.0.4"
   },
   "devDependencies": {
     "electron": "^37.2.4",

@@ -1,6 +1,8 @@
 // routes.js (CommonJS)
 
 const { Router } = require('express');
+const axios = require('axios');
+const https = require('https');
 
 const multer = require('multer');
 const storage = multer({ storage: multer.memoryStorage() });
@@ -15,8 +17,6 @@ const SettingsController = require('../controllers/SettingsController');
 const settings = new SettingsController();
 const adminOnly = require('../middleware/adminOnly');
 
-const SmartFileController = require('../controllers/SmartFileController');
-const smartFile = SmartFileController;
 
 
 router.get("/get-host",fs.handleHostConnection);
@@ -36,15 +36,36 @@ router.post('/settings/cache/invalidate', adminOnly, settings.invalidateCache);
 router.post('/settings/autorun/apply', adminOnly, settings.applyAutorun);
 router.post('/settings/chat/clear', adminOnly, settings.clearChat);
 
-// Smart File Processing API
-router.post('/smart/process-file', adminOnly, smartFile.processFile);
-router.post('/smart/process-directory', adminOnly, smartFile.processDirectory);
-router.get('/smart/status', adminOnly, smartFile.getProcessingStatus);
-router.post('/smart/analyze-file', adminOnly, smartFile.analyzeFile);
-router.post('/smart/search-movie', adminOnly, smartFile.searchMovie);
-router.get('/smart/stats', adminOnly, smartFile.getStats);
-router.post('/smart/clear-caches', adminOnly, smartFile.clearCaches);
-router.get('/smart/check-mediainfo', adminOnly, smartFile.checkMediaInfo);
-router.get('/smart/check-tmdb', adminOnly, smartFile.checkTMDB);
+// TMDB test
+router.post('/tmdb/test', adminOnly, async (req, res) => {
+  const keys = ['HTTP_PROXY','http_proxy','HTTPS_PROXY','https_proxy','NO_PROXY','no_proxy'];
+  const saved = {};
+  keys.forEach(k => { if (Object.prototype.hasOwnProperty.call(process.env, k)) saved[k] = process.env[k]; });
+  try {
+    const apiKey = (req.body && req.body.apiKey) || '';
+    if (!apiKey) return res.json({ success: false, msg: 'Не указан apiKey' });
+
+    // временно отключаем прокси из окружения
+    keys.forEach(k => { delete process.env[k]; });
+
+    const r = await axios.get('https://api.themoviedb.org/3/configuration', {
+      params: { api_key: apiKey },
+      timeout: 15000,
+      validateStatus: () => true,
+      proxy: false,
+      httpsAgent: new https.Agent({ keepAlive: false })
+    });
+    if (r.status === 200) return res.json({ success: true });
+    return res.json({ success: false, msg: `TMDB ответил статусом ${r.status}` });
+  } catch (e) {
+    return res.json({ success: false, msg: e.message || 'Ошибка сети' });
+  } finally {
+    // восстанавливаем окружение корректно
+    keys.forEach(k => {
+      if (Object.prototype.hasOwnProperty.call(saved, k)) process.env[k] = saved[k];
+      else delete process.env[k];
+    });
+  }
+});
 
 module.exports = router;

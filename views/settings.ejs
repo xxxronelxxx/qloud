@@ -111,14 +111,47 @@
     <div class="col-12 col-lg-6">
       <div class="card rounded-4">
         <div class="card-body">
-          <h2 class="h5 mb-3">Умная обработка файлов</h2>
+          <h2 class="h5 mb-3">Настройки Kinozal.tv</h2>
+          <form id="kinozalSettingsForm" class="d-grid gap-3">
+            <div>
+              <label class="form-label">Логин</label>
+              <input type="text" id="kinozalLogin" class="form-control rounded-4" placeholder="Введите логин">
+            </div>
+            <div>
+              <label class="form-label">Пароль</label>
+              <div class="input-group">
+                <input type="password" id="kinozalPassword" class="form-control rounded-4" placeholder="Введите пароль">
+                <button class="btn btn-outline-secondary rounded-4" type="button" id="toggleKinozalPassword">Показать</button>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">Дополнительные cookie</label>
+              <textarea id="kinozalCookies" class="form-control rounded-4" rows="2" placeholder="Например: cf_clearance=...; sid=..."></textarea>
+              <div class="form-text">Можно скопировать cookie из браузера, если сайт защищен Cloudflare.</div>
+            </div>
+            <div>
+              <label class="form-label">Прокси (опционально)</label>
+              <input type="text" id="kinozalProxy" class="form-control rounded-4" placeholder="http://user:pass@host:port или socks5://host:port">
+              <div class="form-text">Используйте прокси при сетевых ограничениях.</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
+              <button class="btn btn-outline-info rounded-4" type="button" id="testKinozalBtn">Проверить подключение</button>
+              <button class="btn btn-outline-secondary rounded-4" type="button" id="checkKinozalAccessBtn">Проверить доступность</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">TMDB API</h2>
           <form id="tmdbSettingsForm" class="d-grid gap-3">
             <div>
               <label class="form-label">TMDB API ключ</label>
               <input type="text" id="tmdbApiKey" class="form-control rounded-4" placeholder="Введите API ключ TMDB">
-              <div class="form-text">
-                Получите бесплатный ключ на <a href="https://www.themoviedb.org/settings/api" target="_blank">The Movie Database</a>
-              </div>
+              <div class="form-text">Получите ключ на themoviedb.org в настройках аккаунта</div>
             </div>
             <div class="d-flex gap-2">
               <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
@@ -338,19 +371,156 @@
           if (d && d.success) alert('История чата очищена');
         });
 
-        // TMDB API Key
+        // Kinozal.tv настройки
+        const kinozalLoginInput = document.getElementById('kinozalLogin');
+        const kinozalPasswordInput = document.getElementById('kinozalPassword');
+        const kinozalCookiesInput = document.getElementById('kinozalCookies');
+        const kinozalProxyInput = document.getElementById('kinozalProxy');
+        const toggleKinozalPasswordBtn = document.getElementById('toggleKinozalPassword');
+        const testKinozalBtn = document.getElementById('testKinozalBtn');
+        const kinozalSettingsForm = document.getElementById('kinozalSettingsForm');
+
+        console.log('Loading Kinozal settings...');
+        console.log('Config kinozalLogin:', config.kinozalLogin ? 'Установлен' : 'Не установлен');
+        console.log('kinozalLoginInput found:', !!kinozalLoginInput);
+        console.log('kinozalSettingsForm found:', !!kinozalSettingsForm);
+        
+        // Обработчик показа/скрытия пароля
+        if (toggleKinozalPasswordBtn) {
+          toggleKinozalPasswordBtn.addEventListener('click', () => {
+            toggle(kinozalPasswordInput, toggleKinozalPasswordBtn);
+          });
+        }
+        
+        if (kinozalLoginInput) {
+            kinozalLoginInput.value = config.kinozalLogin || '';
+            console.log('Login input value set to:', kinozalLoginInput.value ? 'Установлен' : 'Не установлен');
+        }
+        
+        if (kinozalPasswordInput) {
+            kinozalPasswordInput.value = config.kinozalPassword || '';
+        }
+        if (kinozalCookiesInput) {
+            kinozalCookiesInput.value = config.kinozalCookies || '';
+        }
+        if (kinozalProxyInput) {
+            kinozalProxyInput.value = config.kinozalProxy || '';
+        }
+
+        if (kinozalSettingsForm) {
+            console.log('Adding submit listener to kinozalSettingsForm');
+            kinozalSettingsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                console.log('Kinozal form submitted');
+                
+                const login = kinozalLoginInput.value.trim();
+                const password = kinozalPasswordInput.value.trim();
+                const cookies = (kinozalCookiesInput?.value || '').trim();
+                const proxy = (kinozalProxyInput?.value || '').trim();
+                
+                if (!login) {
+                    alert('Введите логин для Kinozal.tv');
+                    return;
+                }
+                
+                if (!password) {
+                    alert('Введите пароль для Kinozal.tv');
+                    return;
+                }
+
+                console.log('Sending API request...');
+                const requestBody = { kinozalLogin: login, kinozalPassword: password, kinozalCookies: cookies, kinozalProxy: proxy };
+                console.log('Request body:', requestBody);
+                
+                try {
+                    const res = await fetch('/api/settings', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                    console.log('Response status:', res.status);
+                    
+                    const data = await res.json();
+                    console.log('Response data:', data);
+                    
+                    if (data.success) {
+                        alert('Настройки Kinozal.tv обновлены');
+                        console.log('Success! New config:', data.config);
+                    } else {
+                        alert(data.msg || 'Ошибка обновления настроек');
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    alert('Ошибка сети: ' + error.message);
+                }
+            });
+        } else {
+            console.error('kinozalSettingsForm not found');
+        }
+
+        testKinozalBtn.addEventListener('click', async () => {
+          const login = kinozalLoginInput.value.trim();
+          const password = kinozalPasswordInput.value.trim();
+          
+          if (!login || !password) {
+            alert('Введите логин и пароль для проверки подключения');
+            return;
+          }
+          
+          try {
+            console.log('Testing Kinozal connection...');
+            const res = await fetch('/api/kinozal/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ login, password })
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+              alert('Подключение к Kinozal.tv успешно!');
+            } else {
+              alert(data.msg || 'Ошибка подключения к Kinozal.tv');
+            }
+          } catch (error) {
+            console.error('Kinozal test error:', error);
+            alert('Ошибка при проверке подключения: ' + error.message);
+          }
+        });
+
+        // Проверка доступности сайта
+        const checkKinozalAccessBtn = document.getElementById('checkKinozalAccessBtn');
+        if (checkKinozalAccessBtn) {
+          checkKinozalAccessBtn.addEventListener('click', async () => {
+            try {
+              console.log('Checking Kinozal site access...');
+              const res = await fetch('/api/kinozal/check-access');
+              
+              const data = await res.json();
+              if (data.success) {
+                alert('Сайт Kinozal.tv доступен!');
+              } else {
+                alert(data.msg || 'Сайт недоступен');
+              }
+            } catch (error) {
+              console.error('Kinozal access check error:', error);
+              alert('Ошибка при проверке доступности: ' + error.message);
+            }
+          });
+        }
+
+        // TMDB API настройки
         const tmdbApiKeyInput = document.getElementById('tmdbApiKey');
-        const testTmdbBtn = document.getElementById('testTmdbBtn');
         const tmdbSettingsForm = document.getElementById('tmdbSettingsForm');
+        const testTmdbBtn = document.getElementById('testTmdbBtn');
 
         console.log('Loading TMDB settings...');
         console.log('Config tmdbApiKey:', config.tmdbApiKey ? 'Установлен' : 'Не установлен');
         console.log('tmdbApiKeyInput found:', !!tmdbApiKeyInput);
         console.log('tmdbSettingsForm found:', !!tmdbSettingsForm);
-        
+
         if (tmdbApiKeyInput) {
             tmdbApiKeyInput.value = config.tmdbApiKey || '';
-            console.log('Input value set to:', tmdbApiKeyInput.value ? 'Установлен' : 'Не установлен');
+            console.log('TMDB API Key input value set to:', tmdbApiKeyInput.value ? 'Установлен' : 'Не установлен');
         }
 
         if (tmdbSettingsForm) {
@@ -359,22 +529,10 @@
                 e.preventDefault();
                 console.log('TMDB form submitted');
                 
-                if (!tmdbApiKeyInput) {
-                    console.error('tmdbApiKeyInput not found');
-                    return;
-                }
-                
                 const apiKey = tmdbApiKeyInput.value.trim();
-                console.log('API key from input:', apiKey ? `"${apiKey}"` : 'ПУСТОЕ');
-                console.log('API key length:', apiKey.length);
                 
                 if (!apiKey) {
-                    alert('Введите API ключ TMDB');
-                    return;
-                }
-                
-                if (!asciiRe.test(apiKey)) {
-                    alert('Разрешены только латинские буквы, цифры и спецсимволы без пробелов');
+                    alert('Введите TMDB API ключ');
                     return;
                 }
 
@@ -389,18 +547,15 @@
                         body: JSON.stringify(requestBody)
                     });
                     console.log('Response status:', res.status);
-                    console.log('Response headers:', res.headers);
                     
                     const data = await res.json();
                     console.log('Response data:', data);
                     
                     if (data.success) {
-                        alert('API ключ TMDB обновлён');
+                        alert('Настройки TMDB API обновлены');
                         console.log('Success! New config:', data.config);
-                        // Обновляем значение в поле
-                        tmdbApiKeyInput.value = data.config.tmdbApiKey || apiKey;
                     } else {
-                        alert(data.msg || 'Ошибка обновления API ключа');
+                        alert(data.msg || 'Ошибка обновления настроек');
                     }
                 } catch (error) {
                     console.error('Fetch error:', error);
@@ -413,23 +568,29 @@
 
         testTmdbBtn.addEventListener('click', async () => {
           const apiKey = tmdbApiKeyInput.value.trim();
-          console.log('Testing TMDB API key:', apiKey ? 'Установлен' : 'Не установлен');
+          
           if (!apiKey) {
-            alert('Введите API ключ TMDB для проверки');
+            alert('Введите TMDB API ключ для проверки');
             return;
           }
+          
           try {
-            console.log('Testing TMDB API...');
-            const res = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${apiKey}`);
-            console.log('TMDB test response status:', res.status);
-            if (res.ok) {
-              alert('API ключ TMDB действителен!');
+            console.log('Testing TMDB API connection...');
+            const res = await fetch('/api/tmdb/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiKey })
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+              alert('TMDB API успешно подключен!');
             } else {
-              alert('API ключ TMDB недействителен. Проверьте правильность ключа.');
+              alert(data.msg || 'Ошибка подключения к TMDB API');
             }
           } catch (error) {
             console.error('TMDB test error:', error);
-            alert('Ошибка при проверке API ключа: ' + error.message);
+            alert('Ошибка при проверке подключения: ' + error.message);
           }
         });
       }
