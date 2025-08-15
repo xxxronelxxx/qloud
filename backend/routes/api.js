@@ -43,7 +43,8 @@ router.post('/tmdb/test', adminOnly, async (req, res) => {
     const r = await axios.get('https://api.themoviedb.org/3/configuration', {
       params: { api_key: apiKey },
       timeout: 15000,
-      validateStatus: () => true
+      validateStatus: () => true,
+      proxy: false
     });
     if (r.status === 200) return res.json({ success: true });
     return res.json({ success: false, msg: `TMDB ответил статусом ${r.status}` });

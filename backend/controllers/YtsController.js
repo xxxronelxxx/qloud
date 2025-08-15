@@ -17,14 +17,14 @@ class YtsController {
     if (!this.tmdbApiKey) return null;
     try {
       const url = `https://api.themoviedb.org/3/search/movie?api_key=${this.tmdbApiKey}&language=ru-RU&query=${encodeURIComponent(query)}`;
-      const { data } = await axios.get(url, { timeout: 12000 });
+      const { data } = await axios.get(url, { timeout: 12000, proxy: false });
       const results = (data && data.results) || [];
       if (!results.length) return null;
       const best = results[0];
       // Получим внешние ID (IMDB)
       let imdb_id = '';
       try {
-        const ext = await axios.get(`https://api.themoviedb.org/3/movie/${best.id}/external_ids?api_key=${this.tmdbApiKey}`, { timeout: 12000 });
+        const ext = await axios.get(`https://api.themoviedb.org/3/movie/${best.id}/external_ids?api_key=${this.tmdbApiKey}`, { timeout: 12000, proxy: false });
         imdb_id = (ext && ext.data && ext.data.imdb_id) || '';
       } catch(_) {}
       return {
@@ -91,7 +91,7 @@ class YtsController {
         } else {
           url2 = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(resolved.original_title)}&limit=20`;
         }
-        const { data: data2 } = await axios.get(url2, { timeout: 15000 });
+        const { data: data2 } = await axios.get(url2, { timeout: 15000, proxy: false });
         if (data2 && data2.status === 'ok' && data2.data) {
           const movies2 = data2.data.movies || [];
           if (movies2.length) return this.normalizeMovies(movies2);
