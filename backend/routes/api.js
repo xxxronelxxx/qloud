@@ -19,6 +19,8 @@ const adminOnly = require('../middleware/adminOnly');
 
 const TMDBService = require('../services/TMDBService');
 const RussianMovieService = require('../services/RussianMovieService');
+const KinopoiskService = require('../services/KinopoiskService');
+const RussianMoviesParser = require('../services/RussianMoviesParser');
 
 
 router.get("/get-host",fs.handleHostConnection);
@@ -194,6 +196,66 @@ router.post('/russian-movies/local/add', adminOnly, (req, res) => {
     
     RussianMovieService.addCustomItem(item);
     res.json({ success: true, msg: 'Фильм/сериал добавлен в локальную базу' });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+// Kinopoisk API
+router.post('/kinopoisk/search', adminOnly, async (req, res) => {
+  try {
+    const { query, year } = req.body;
+    
+    if (!query) {
+      return res.json({ success: false, msg: 'Не указан поисковый запрос' });
+    }
+    
+    const result = await KinopoiskService.searchMovies(query, year);
+    
+    if (result) {
+      res.json({ success: true, data: result });
+    } else {
+      res.json({ success: false, msg: 'Фильм не найден в Kinopoisk' });
+    }
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/kinopoisk/stats', adminOnly, (req, res) => {
+  try {
+    const stats = KinopoiskService.getStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+// Парсинг API
+router.post('/parser/search', adminOnly, async (req, res) => {
+  try {
+    const { query, year } = req.body;
+    
+    if (!query) {
+      return res.json({ success: false, msg: 'Не указан поисковый запрос' });
+    }
+    
+    const result = await RussianMoviesParser.searchMultiSource(query, year);
+    
+    if (result) {
+      res.json({ success: true, data: result });
+    } else {
+      res.json({ success: false, msg: 'Фильм не найден через парсинг' });
+    }
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/parser/stats', adminOnly, (req, res) => {
+  try {
+    const stats = RussianMoviesParser.getStats();
+    res.json({ success: true, data: stats });
   } catch (error) {
     res.json({ success: false, msg: error.message });
   }
