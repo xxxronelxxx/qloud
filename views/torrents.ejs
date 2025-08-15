@@ -6,15 +6,15 @@
   <h1 class="h3 mb-3">Торренты</h1>
 
   <div class="row g-4">
-    <!-- Поиск на Kinozal.tv -->
+    <!-- Поиск на YTS.mx -->
     <div class="col-12">
       <div class="card rounded-4">
         <div class="card-body">
-          <h2 class="h5 mb-3">Поиск на Kinozal.tv</h2>
-          <form id="kinozalSearchForm" class="d-grid gap-3">
+          <h2 class="h5 mb-3">Поиск на YTS</h2>
+          <form id="ytsSearchForm" class="d-grid gap-3">
             <div class="row">
               <div class="col-md-8">
-                <input type="text" id="kinozalSearchInput" class="form-control rounded-4" placeholder="Введите название фильма или сериала для поиска" required>
+                <input type="text" id="ytsSearchInput" class="form-control rounded-4" placeholder="Введите название фильма для поиска" required>
               </div>
               <div class="col-md-4">
                 <button class="btn btn-primary rounded-4 w-100" type="submit">Поиск</button>
@@ -22,14 +22,14 @@
             </div>
           </form>
           
-          <div id="kinozalResults" class="mt-3" style="display: none;">
+          <div id="ytsResults" class="mt-3" style="display: none;">
             <h3 class="h6">Результаты поиска:</h3>
-            <div id="kinozalResultsList" class="d-flex flex-column gap-2"></div>
+            <div id="ytsResultsList" class="d-flex flex-column gap-2"></div>
           </div>
           
-          <div id="kinozalFiles" class="mt-3" style="display: none;">
+          <div id="ytsFiles" class="mt-3" style="display: none;">
             <h3 class="h6">Файлы торрента:</h3>
-            <div id="kinozalFilesList" class="d-flex flex-column gap-1"></div>
+            <div id="ytsFilesList" class="d-flex flex-column gap-1"></div>
           </div>
         </div>
       </div>
@@ -222,31 +222,31 @@
     fi.value = '';
   });
 
-  // Kinozal.tv поиск
-  const kinozalSearchForm = document.getElementById('kinozalSearchForm');
-  const kinozalSearchInput = document.getElementById('kinozalSearchInput');
-  const kinozalResults = document.getElementById('kinozalResults');
-  const kinozalResultsList = document.getElementById('kinozalResultsList');
-  const kinozalFiles = document.getElementById('kinozalFiles');
-  const kinozalFilesList = document.getElementById('kinozalFilesList');
+  // YTS поиск
+  const ytsSearchForm = document.getElementById('ytsSearchForm');
+  const ytsSearchInput = document.getElementById('ytsSearchInput');
+  const ytsResults = document.getElementById('ytsResults');
+  const ytsResultsList = document.getElementById('ytsResultsList');
+  const ytsFiles = document.getElementById('ytsFiles');
+  const ytsFilesList = document.getElementById('ytsFilesList');
 
-  kinozalSearchForm.addEventListener('submit', async (e) => {
+  ytsSearchForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const query = kinozalSearchInput.value.trim();
+    const query = ytsSearchInput.value.trim();
     if (!query) return;
 
     try {
-      kinozalResultsList.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><div class="mt-2">Поиск...</div></div>';
-      kinozalResults.style.display = 'block';
-      kinozalFiles.style.display = 'none';
+      ytsResultsList.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><div class="mt-2">Поиск...</div></div>';
+      ytsResults.style.display = 'block';
+      ytsFiles.style.display = 'none';
 
-      const res = await fetch(`/api/kinozal/search?query=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/yts/search?query=${encodeURIComponent(query)}`);
       const data = await res.json();
 
-      if (data.success && data.torrents) {
-        renderKinozalResults(data.torrents);
+      if (data.success && data.items) {
+        renderYtsResults(data.items);
       } else {
-        kinozalResultsList.innerHTML = `<div class="alert alert-warning">${data.msg || 'Ошибка поиска'}</div>`;
+        ytsResultsList.innerHTML = `<div class="alert alert-warning">${data.msg || 'Ошибка поиска'}</div>`;
       }
     } catch (error) {
       console.error('Kinozal search error:', error);
@@ -254,27 +254,27 @@
     }
   });
 
-  function renderKinozalResults(torrents) {
-    if (!torrents || torrents.length === 0) {
-      kinozalResultsList.innerHTML = '<div class="alert alert-info">Ничего не найдено</div>';
+  function renderYtsResults(items) {
+    if (!items || items.length === 0) {
+      ytsResultsList.innerHTML = '<div class="alert alert-info">Ничего не найдено</div>';
       return;
     }
 
-    kinozalResultsList.innerHTML = torrents.map(torrent => `
+    ytsResultsList.innerHTML = items.map(item => `
       <div class="card rounded-3 border">
         <div class="card-body p-3">
           <div class="d-flex justify-content-between align-items-start">
             <div class="flex-grow-1">
-              <h6 class="mb-1">${torrent.title}</h6>
+              <h6 class="mb-1">${item.title}</h6>
               <div class="small text-muted">
-                Размер: ${torrent.size} | Сиды: ${torrent.seeds} | Личи: ${torrent.leeches} | Дата: ${torrent.date}
+                Размер: ${item.size || ''} | Сиды: ${item.seeds} | Личи: ${item.leeches} | Дата: ${item.date}
               </div>
             </div>
             <div class="d-flex gap-2">
-              <button class="btn btn-outline-primary btn-sm rounded-3" onclick="showKinozalFiles('${torrent.id}')">
+              <button class="btn btn-outline-primary btn-sm rounded-3" onclick="showYtsFiles('${encodeURIComponent('${item.torrentUrl}')}')">
                 Файлы
               </button>
-              <button class="btn btn-outline-success btn-sm rounded-3" onclick="addKinozalTorrent('${torrent.id}')">
+              <button class="btn btn-outline-success btn-sm rounded-3" onclick="addYtsTorrent('${item.hash}', '${encodeURIComponent('${item.title}')}')">
                 Добавить
               </button>
             </div>
@@ -284,18 +284,18 @@
     `).join('');
   }
 
-  async function showKinozalFiles(torrentId) {
+  async function showYtsFiles(torrentUrlEnc) {
     try {
-      kinozalFilesList.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><div class="mt-2">Загрузка...</div></div>';
-      kinozalFiles.style.display = 'block';
+      ytsFilesList.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><div class="mt-2">Загрузка...</div></div>';
+      ytsFiles.style.display = 'block';
 
-      const res = await fetch(`/api/kinozal/files/${torrentId}`);
+      const res = await fetch(`/api/yts/files?url=${torrentUrlEnc}`);
       const data = await res.json();
 
       if (data.success && data.files) {
-        renderKinozalFiles(data.files);
+        renderYtsFiles(data.files);
       } else {
-        kinozalFilesList.innerHTML = `<div class="alert alert-warning">${data.msg || 'Ошибка загрузки файлов'}</div>`;
+        ytsFilesList.innerHTML = `<div class="alert alert-warning">${data.msg || 'Ошибка загрузки файлов'}</div>`;
       }
     } catch (error) {
       console.error('Kinozal files error:', error);
@@ -303,13 +303,13 @@
     }
   }
 
-  function renderKinozalFiles(files) {
+  function renderYtsFiles(files) {
     if (!files || files.length === 0) {
-      kinozalFilesList.innerHTML = '<div class="alert alert-info">Файлы не найдены</div>';
+      ytsFilesList.innerHTML = '<div class="alert alert-info">Файлы не найдены</div>';
       return;
     }
 
-    kinozalFilesList.innerHTML = files.map(file => `
+    ytsFilesList.innerHTML = files.map(file => `
       <div class="d-flex justify-content-between align-items-center p-2 bg-body-secondary rounded-2">
         <div class="flex-grow-1">
           <div class="small">${file.name}</div>
@@ -320,17 +320,16 @@
     `).join('');
   }
 
-  async function addKinozalTorrent(torrentId) {
+  async function addYtsTorrent(hash, titleEnc) {
     try {
-      const res = await fetch(`/api/kinozal/magnet/${torrentId}`);
+      const res = await fetch(`/api/yts/magnet/${hash}`);
       const data = await res.json();
 
-      if (data.success && data.magnetLink) {
-        // Добавляем magnet-ссылку в торрент-клиент
+      if (data.success && data.magnet) {
         await fetch('/torrents/api/add-magnet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ magnet: data.magnetLink })
+          body: JSON.stringify({ magnet: data.magnet })
         });
         alert('Торрент добавлен в загрузки!');
       } else {

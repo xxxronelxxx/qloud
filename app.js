@@ -42,12 +42,14 @@ const userRouter = require("./backend/routes/auth.js");
 const mainRouter = require("./backend/routes/main.js");
 const torrentsRouter = require('./backend/routes/torrents.js');
 const kinozalRouter = require('./backend/routes/kinozal.js');
+const ytsRouter = require('./backend/routes/yts.js');
 
 serverApp.use('/api', apiRouter);
 serverApp.use("/auth-api",userRouter);
 serverApp.use("", mainRouter);
 serverApp.use('/torrents', torrentsRouter);
 serverApp.use('/api/kinozal', kinozalRouter);
+serverApp.use('/api/yts', ytsRouter);
 
 serverApp.engine('ejs', engine);
 serverApp.set('view engine', 'ejs');
