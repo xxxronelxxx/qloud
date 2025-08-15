@@ -124,6 +124,16 @@
                 <button class="btn btn-outline-secondary rounded-4" type="button" id="toggleKinozalPassword">Показать</button>
               </div>
             </div>
+            <div>
+              <label class="form-label">Дополнительные cookie</label>
+              <textarea id="kinozalCookies" class="form-control rounded-4" rows="2" placeholder="Например: cf_clearance=...; sid=..."></textarea>
+              <div class="form-text">Можно скопировать cookie из браузера, если сайт защищен Cloudflare.</div>
+            </div>
+            <div>
+              <label class="form-label">Прокси (опционально)</label>
+              <input type="text" id="kinozalProxy" class="form-control rounded-4" placeholder="http://user:pass@host:port или socks5://host:port">
+              <div class="form-text">Используйте прокси при сетевых ограничениях.</div>
+            </div>
             <div class="d-flex gap-2">
               <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
               <button class="btn btn-outline-info rounded-4" type="button" id="testKinozalBtn">Проверить подключение</button>
@@ -346,6 +356,8 @@
         // Kinozal.tv настройки
         const kinozalLoginInput = document.getElementById('kinozalLogin');
         const kinozalPasswordInput = document.getElementById('kinozalPassword');
+        const kinozalCookiesInput = document.getElementById('kinozalCookies');
+        const kinozalProxyInput = document.getElementById('kinozalProxy');
         const toggleKinozalPasswordBtn = document.getElementById('toggleKinozalPassword');
         const testKinozalBtn = document.getElementById('testKinozalBtn');
         const kinozalSettingsForm = document.getElementById('kinozalSettingsForm');
@@ -370,6 +382,12 @@
         if (kinozalPasswordInput) {
             kinozalPasswordInput.value = config.kinozalPassword || '';
         }
+        if (kinozalCookiesInput) {
+            kinozalCookiesInput.value = config.kinozalCookies || '';
+        }
+        if (kinozalProxyInput) {
+            kinozalProxyInput.value = config.kinozalProxy || '';
+        }
 
         if (kinozalSettingsForm) {
             console.log('Adding submit listener to kinozalSettingsForm');
@@ -379,6 +397,8 @@
                 
                 const login = kinozalLoginInput.value.trim();
                 const password = kinozalPasswordInput.value.trim();
+                const cookies = (kinozalCookiesInput?.value || '').trim();
+                const proxy = (kinozalProxyInput?.value || '').trim();
                 
                 if (!login) {
                     alert('Введите логин для Kinozal.tv');
@@ -391,7 +411,7 @@
                 }
 
                 console.log('Sending API request...');
-                const requestBody = { kinozalLogin: login, kinozalPassword: password };
+                const requestBody = { kinozalLogin: login, kinozalPassword: password, kinozalCookies: cookies, kinozalProxy: proxy };
                 console.log('Request body:', requestBody);
                 
                 try {

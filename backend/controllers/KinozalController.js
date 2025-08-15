@@ -1,67 +1,119 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const Settings = require('../models/SettingsModel');
+const { HttpsProxyAgent } = require('https-proxy-agent');
+const { SocksProxyAgent } = require('socks-proxy-agent');
 
 class KinozalController {
   constructor() {
     this.baseUrl = 'https://kinozal.tv';
     this.session = null;
     this.cookies = [];
+    this.proxyAgent = null;
+
+    const cfg = Settings.readConfig();
+    this.userCookies = cfg.kinozalCookies || '';
+    this.proxyUrl = cfg.kinozalProxy || '';
+
+    if (this.proxyUrl) {
+      try {
+        if (this.proxyUrl.startsWith('socks')) {
+          this.proxyAgent = new SocksProxyAgent(this.proxyUrl);
+        } else {
+          this.proxyAgent = new HttpsProxyAgent(this.proxyUrl);
+        }
+      } catch (_) {}
+    }
+  }
+
+  refreshConfig() {
+    const cfg = Settings.readConfig();
+    this.userCookies = cfg.kinozalCookies || '';
+    this.proxyUrl = cfg.kinozalProxy || '';
+    this.proxyAgent = null;
+    if (this.proxyUrl) {
+      try {
+        if (this.proxyUrl.startsWith('socks')) {
+          this.proxyAgent = new SocksProxyAgent(this.proxyUrl);
+        } else {
+          this.proxyAgent = new HttpsProxyAgent(this.proxyUrl);
+        }
+      } catch (_) {}
+    }
   }
 
   // Создание axios инстанса с правильными заголовками
   createSession() {
-    return axios.create({
+    const instance = axios.create({
       baseURL: this.baseUrl,
-      timeout: 30000,
+      timeout: 45000,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
+        'Upgrade-Insecure-Requests': '1',
+        ...(this.userCookies ? { Cookie: this.userCookies } : {})
       },
       maxRedirects: 5,
       validateStatus: function (status) {
         return status >= 200 && status < 400;
-      }
+      },
+      httpAgent: this.proxyAgent || undefined,
+      httpsAgent: this.proxyAgent || undefined
     });
+    return instance;
   }
 
   // Создание простой сессии с минимальными заголовками
   createSimpleSession() {
-    return axios.create({
+    const instance = axios.create({
       baseURL: this.baseUrl,
       timeout: 45000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ...(this.userCookies ? { Cookie: this.userCookies } : {})
       },
       maxRedirects: 5,
       validateStatus: function (status) {
         return status >= 200 && status < 400;
-      }
+      },
+      httpAgent: this.proxyAgent || undefined,
+      httpsAgent: this.proxyAgent || undefined
     });
+    return instance;
   }
 
   // Обновление cookies в сессии
   updateCookies(response) {
-    if (response.headers['set-cookie']) {
-      this.cookies = response.headers['set-cookie'].map(cookie => {
-        return cookie.split(';')[0];
-      });
-      this.session.defaults.headers.Cookie = this.cookies.join('; ');
+    const dynamicCookies = [];
+    if (response && response.headers && response.headers['set-cookie']) {
+      dynamicCookies.push(...response.headers['set-cookie'].map(c => c.split(';')[0]));
     }
+    const merged = [];
+    if (this.userCookies) merged.push(this.userCookies);
+    if (dynamicCookies.length) merged.push(dynamicCookies.join('; '));
+    const cookieHeader = merged.join('; ');
+    if (!this.session) return;
+    if (!this.session.defaults.headers) this.session.defaults.headers = {};
+    if (!this.session.defaults.headers.common) this.session.defaults.headers.common = {};
+    this.session.defaults.headers.common['Cookie'] = cookieHeader;
   }
 
   // Проверка доступности сайта
   async checkSiteAvailability() {
     try {
+      this.refreshConfig();
       console.log('Проверяем доступность сайта...');
       const response = await axios.get(this.baseUrl, {
-        timeout: 10000,
+        timeout: 12000,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          ...(this.userCookies ? { Cookie: this.userCookies } : {})
+        },
+        httpAgent: this.proxyAgent || undefined,
+        httpsAgent: this.proxyAgent || undefined
       });
       console.log('Сайт доступен, статус:', response.status);
       return true;
@@ -83,6 +135,7 @@ class KinozalController {
       }
       
       // Создаем новую сессию
+      this.refreshConfig();
       this.session = this.createSession();
       
       // Получаем главную страницу для получения начальных cookies
@@ -335,6 +388,7 @@ class KinozalController {
       }
       
       // Создаем новую сессию
+      this.refreshConfig();
       this.session = this.createSession();
       
       // Получаем главную страницу
