@@ -1,12 +1,14 @@
 const axios = require('axios');
 const parseTorrent = require('parse-torrent');
 const Settings = require('../models/SettingsModel');
+const https = require('https');
 
 class YtsController {
   constructor() {
     this.baseApi = 'https://yts.mx/api/v2';
     const cfg = Settings.readConfig();
     this.tmdbApiKey = (cfg && cfg.tmdbApiKey) || process.env.TMDB_API_KEY || '';
+    this.httpsAgent = new https.Agent({ keepAlive: false });
   }
 
   hasNonAscii(text) {
@@ -17,14 +19,14 @@ class YtsController {
     if (!this.tmdbApiKey) return null;
     try {
       const url = `https://api.themoviedb.org/3/search/movie?api_key=${this.tmdbApiKey}&language=ru-RU&query=${encodeURIComponent(query)}`;
-      const { data } = await axios.get(url, { timeout: 12000, proxy: false });
+      const { data } = await axios.get(url, { timeout: 12000, proxy: false, httpsAgent: this.httpsAgent });
       const results = (data && data.results) || [];
       if (!results.length) return null;
       const best = results[0];
       // Получим внешние ID (IMDB)
       let imdb_id = '';
       try {
-        const ext = await axios.get(`https://api.themoviedb.org/3/movie/${best.id}/external_ids?api_key=${this.tmdbApiKey}`, { timeout: 12000, proxy: false });
+        const ext = await axios.get(`https://api.themoviedb.org/3/movie/${best.id}/external_ids?api_key=${this.tmdbApiKey}`, { timeout: 12000, proxy: false, httpsAgent: this.httpsAgent });
         imdb_id = (ext && ext.data && ext.data.imdb_id) || '';
       } catch(_) {}
       return {
@@ -72,26 +74,26 @@ class YtsController {
       this.tmdbApiKey = (cfg && cfg.tmdbApiKey) || process.env.TMDB_API_KEY || '';
     } catch (_) {}
 
-    // Пробуем прямой поиск на YTS
+    // Прямой поиск на YTS (принудительно без прокси)
     const url = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(query)}&page=${page}&limit=20`;
-    const { data } = await axios.get(url, { timeout: 15000 });
+    const { data } = await axios.get(url, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
     if (data && data.status === 'ok' && data.data) {
       const movies = data.data.movies || [];
       if (movies.length) return this.normalizeMovies(movies);
     }
 
-    // Fallback: если есть кириллица/не ASCII и задан TMDB ключ — резолвим на TMDB
+    // Fallback через TMDB для русскоязычных запросов
     if (this.tmdbApiKey && this.hasNonAscii(query)) {
       const resolved = await this.tmdbResolveQuery(query);
       if (resolved) {
-        // Пробуем сперва по IMDB id (если поддерживается), иначе по оригинальному названию
+        // Пробуем сперва по IMDB id, затем по оригинальному названию
         let url2 = '';
         if (resolved.imdb_id) {
           url2 = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(resolved.imdb_id)}&limit=20`;
         } else {
           url2 = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(resolved.original_title)}&limit=20`;
         }
-        const { data: data2 } = await axios.get(url2, { timeout: 15000, proxy: false });
+        const { data: data2 } = await axios.get(url2, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
         if (data2 && data2.status === 'ok' && data2.data) {
           const movies2 = data2.data.movies || [];
           if (movies2.length) return this.normalizeMovies(movies2);
@@ -116,7 +118,7 @@ class YtsController {
   }
 
   async getFilesByTorrentUrl(torrentUrl) {
-    const resp = await axios.get(torrentUrl, { responseType: 'arraybuffer', timeout: 20000 });
+    const resp = await axios.get(torrentUrl, { responseType: 'arraybuffer', timeout: 20000, proxy: false, httpsAgent: this.httpsAgent });
     const tor = parseTorrent(Buffer.from(resp.data));
     const files = (tor.files || []).map(f => ({
       name: f.name,
@@ -128,7 +130,7 @@ class YtsController {
 
   async details(movieId) {
     const url = `${this.baseApi}/movie_details.json?movie_id=${encodeURIComponent(movieId)}&with_images=true&with_cast=true`;
-    const { data } = await axios.get(url, { timeout: 15000 });
+    const { data } = await axios.get(url, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
     const m = data && data.data && data.data.movie;
     if (!m) return null;
     return {
