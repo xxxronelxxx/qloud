@@ -164,6 +164,47 @@
   </div>
 
   <div class="row g-4 mt-1">
+    <div class="col-12">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Локализация фильмов</h2>
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <div class="d-flex flex-wrap gap-3 align-items-center mb-3">
+                <button class="btn btn-outline-info rounded-4" type="button" id="loadLocalizationStatsBtn">Статистика</button>
+                <button class="btn btn-outline-warning rounded-4" type="button" id="clearTmdbCacheBtn">Очистить кэш TMDB</button>
+                <span class="small text-muted" id="localizationStats">Загрузка...</span>
+              </div>
+              <div class="alert alert-info">
+                <strong>Информация:</strong> Система автоматически переводит имена популярных актеров и режиссеров на русский язык. 
+                Вы можете добавить дополнительные переводы ниже.
+              </div>
+            </div>
+            <div class="col-12 col-md-6">
+              <form id="translationForm" class="d-grid gap-3">
+                <div>
+                  <label class="form-label">Добавить перевод имени</label>
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <input type="text" id="englishName" class="form-control rounded-4" placeholder="Английское имя">
+                    </div>
+                    <div class="col-6">
+                      <input type="text" id="russianName" class="form-control rounded-4" placeholder="Русское имя">
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <button class="btn btn-success rounded-4" type="submit">Добавить перевод</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-1">
     <div class="col-12 col-lg-6">
       <div class="card rounded-4">
         <div class="card-body">
@@ -609,6 +650,101 @@
       await fetch('/api/settings/autorun/apply', { method: 'POST' });
       alert('Настройки интерфейса сохранены');
     });
+  });
+
+  // Локализация фильмов
+  document.addEventListener('DOMContentLoaded', () => {
+    const loadStatsBtn = document.getElementById('loadLocalizationStatsBtn');
+    const clearCacheBtn = document.getElementById('clearTmdbCacheBtn');
+    const translationForm = document.getElementById('translationForm');
+    const statsSpan = document.getElementById('localizationStats');
+
+    // Загрузка статистики локализации
+    async function loadLocalizationStats() {
+      try {
+        const res = await fetch('/api/tmdb/localization/stats');
+        const data = await res.json();
+        
+        if (data.success) {
+          const stats = data.data;
+          statsSpan.textContent = `Переводов: ${stats.totalTranslations}, Кэш: ${stats.cacheSize} записей`;
+        } else {
+          statsSpan.textContent = 'Ошибка загрузки статистики';
+        }
+      } catch (error) {
+        console.error('Error loading localization stats:', error);
+        statsSpan.textContent = 'Ошибка загрузки';
+      }
+    }
+
+    // Очистка кэша TMDB
+    if (clearCacheBtn) {
+      clearCacheBtn.addEventListener('click', async () => {
+        if (!confirm('Очистить кэш TMDB? Это может замедлить работу при следующем поиске фильмов.')) {
+          return;
+        }
+        
+        try {
+          const res = await fetch('/api/tmdb/cache/clear', { method: 'POST' });
+          const data = await res.json();
+          
+          if (data.success) {
+            alert('Кэш TMDB очищен');
+            loadLocalizationStats(); // Обновляем статистику
+          } else {
+            alert(data.msg || 'Ошибка очистки кэша');
+          }
+        } catch (error) {
+          console.error('Error clearing cache:', error);
+          alert('Ошибка очистки кэша: ' + error.message);
+        }
+      });
+    }
+
+    // Загрузка статистики при клике
+    if (loadStatsBtn) {
+      loadStatsBtn.addEventListener('click', loadLocalizationStats);
+    }
+
+    // Форма добавления переводов
+    if (translationForm) {
+      translationForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const englishName = document.getElementById('englishName').value.trim();
+        const russianName = document.getElementById('russianName').value.trim();
+        
+        if (!englishName || !russianName) {
+          alert('Заполните оба поля');
+          return;
+        }
+        
+        try {
+          const res = await fetch('/api/tmdb/localization/translations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ englishName, russianName })
+          });
+          
+          const data = await res.json();
+          
+          if (data.success) {
+            alert('Перевод добавлен');
+            document.getElementById('englishName').value = '';
+            document.getElementById('russianName').value = '';
+            loadLocalizationStats(); // Обновляем статистику
+          } else {
+            alert(data.msg || 'Ошибка добавления перевода');
+          }
+        } catch (error) {
+          console.error('Error adding translation:', error);
+          alert('Ошибка добавления перевода: ' + error.message);
+        }
+      });
+    }
+
+    // Загружаем статистику при загрузке страницы
+    loadLocalizationStats();
   });
 </script>
 

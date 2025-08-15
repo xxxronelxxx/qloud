@@ -17,6 +17,7 @@ const SettingsController = require('../controllers/SettingsController');
 const settings = new SettingsController();
 const adminOnly = require('../middleware/adminOnly');
 
+const TMDBService = require('../services/TMDBService');
 
 
 router.get("/get-host",fs.handleHostConnection);
@@ -65,6 +66,49 @@ router.post('/tmdb/test', adminOnly, async (req, res) => {
       if (Object.prototype.hasOwnProperty.call(saved, k)) process.env[k] = saved[k];
       else delete process.env[k];
     });
+  }
+});
+
+// TMDB локализация API
+router.get('/tmdb/localization/stats', adminOnly, (req, res) => {
+  try {
+    const stats = TMDBService.getLocalizationStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/tmdb/localization/translations', adminOnly, (req, res) => {
+  try {
+    const translations = TMDBService.getTranslations();
+    res.json({ success: true, data: translations });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.post('/tmdb/localization/translations', adminOnly, (req, res) => {
+  try {
+    const { englishName, russianName } = req.body;
+    
+    if (!englishName || !russianName) {
+      return res.json({ success: false, msg: 'Не указаны английское и русское имена' });
+    }
+    
+    TMDBService.addTranslation(englishName, russianName);
+    res.json({ success: true, msg: 'Перевод добавлен' });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.post('/tmdb/cache/clear', adminOnly, (req, res) => {
+  try {
+    TMDBService.clearCache();
+    res.json({ success: true, msg: 'Кэш TMDB очищен' });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
   }
 });
 
