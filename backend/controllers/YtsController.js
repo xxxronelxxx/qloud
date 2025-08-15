@@ -17,11 +17,81 @@ class YtsController {
 
   translitRuToEn(text) {
     if (!text) return '';
+    
+    // Специальные случаи для популярных фильмов
+    const specialCases = {
+      'матрица': 'matrix',
+      'матрица': 'matrix',
+      'терминатор': 'terminator',
+      'терминатор': 'terminator',
+      'аватар': 'avatar',
+      'аватар': 'avatar',
+      'титаник': 'titanic',
+      'титаник': 'titanic',
+      'форрест гамп': 'forrest gump',
+      'форрест гамп': 'forrest gump',
+      'список шиндлера': 'schindler list',
+      'список шиндлера': 'schindler list',
+      'властелин колец': 'lord of the rings',
+      'властелин колец': 'lord of the rings',
+      'гарри поттер': 'harry potter',
+      'гарри поттер': 'harry potter',
+      'звездные войны': 'star wars',
+      'звездные войны': 'star wars',
+      'в поисках немо': 'finding nemo',
+      'в поисках немо': 'finding nemo',
+      'король лев': 'lion king',
+      'король лев': 'lion king'
+    };
+    
+    const lowerText = text.toLowerCase();
+    if (specialCases[lowerText]) {
+      return specialCases[lowerText];
+    }
+    
     const map = {
       'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
       'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'Kh','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Shch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya'
     };
     return Array.from(text).map(ch => map[ch] ?? ch).join('');
+  }
+
+  getPopularEnglishNames(russianQuery) {
+    const lowerQuery = russianQuery.toLowerCase();
+    const popularMap = {
+      'матрица': ['matrix', 'the matrix'],
+      'терминатор': ['terminator', 'the terminator'],
+      'аватар': ['avatar'],
+      'титаник': ['titanic'],
+      'форрест гамп': ['forrest gump'],
+      'список шиндлера': ['schindler list', 'schindlers list'],
+      'властелин колец': ['lord of the rings', 'the lord of the rings'],
+      'гарри поттер': ['harry potter'],
+      'звездные войны': ['star wars'],
+      'в поисках немо': ['finding nemo'],
+      'король лев': ['lion king', 'the lion king'],
+      'пираты карибского моря': ['pirates of the caribbean'],
+      'назад в будущее': ['back to the future'],
+      'индиана джонс': ['indiana jones'],
+      'человек паук': ['spider man', 'spiderman'],
+      'железный человек': ['iron man'],
+      'мстители': ['avengers'],
+      'капитан америка': ['captain america'],
+      'тор': ['thor'],
+      'халк': ['hulk'],
+      'черная вдова': ['black widow'],
+      'доктор стрэндж': ['doctor strange'],
+      'страж галактики': ['guardians of the galaxy'],
+      'человек муравей': ['ant man', 'antman'],
+      'капитан марвел': ['captain marvel'],
+      'черная пантера': ['black panther'],
+      'вдова': ['black widow'],
+      'муравей': ['ant man', 'antman'],
+      'марвел': ['captain marvel'],
+      'пантера': ['black panther']
+    };
+    
+    return popularMap[lowerQuery] || [];
   }
 
   async tmdbResolveQuery(query) {
@@ -77,37 +147,72 @@ class YtsController {
   }
 
   async search(query, page = 1) {
+    console.log(`[YTS] Поиск: "${query}" (страница ${page})`);
+    
     // обновляем ключ на случай изменения в настройках без перезапуска
     try {
       const cfg = Settings.readConfig();
       this.tmdbApiKey = (cfg && cfg.tmdbApiKey) || process.env.TMDB_API_KEY || '';
+      console.log(`[YTS] TMDB ключ: ${this.tmdbApiKey ? 'есть' : 'нет'}`);
     } catch (_) {}
 
     // Прямой поиск на YTS (принудительно без прокси)
     const url = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(query)}&page=${page}&limit=20`;
-    const { data } = await axios.get(url, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-    if (data && data.status === 'ok' && data.data) {
-      const movies = data.data.movies || [];
-      if (movies.length) return this.normalizeMovies(movies);
+    console.log(`[YTS] Прямой поиск: ${url}`);
+    try {
+      const { data } = await axios.get(url, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
+      if (data && data.status === 'ok' && data.data) {
+        const movies = data.data.movies || [];
+        console.log(`[YTS] Прямой поиск: найдено ${movies.length} фильмов`);
+        if (movies.length) return this.normalizeMovies(movies);
+      }
+    } catch (error) {
+      console.log(`[YTS] Ошибка прямого поиска:`, error.message);
     }
 
     // Если кириллица — пробуем транслит и ещё раз на YTS
     if (this.hasNonAscii(query)) {
       const tr = this.translitRuToEn(query);
+      console.log(`[YTS] Транслитерация "${query}" → "${tr}"`);
       if (tr && tr !== query) {
         const urlTr = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(tr)}&page=${page}&limit=20`;
-        const { data: dataTr } = await axios.get(urlTr, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-        if (dataTr && dataTr.status === 'ok' && dataTr.data) {
-          const moviesTr = dataTr.data.movies || [];
-          if (moviesTr.length) return this.normalizeMovies(moviesTr);
+        console.log(`[YTS] Поиск по транслиту: ${urlTr}`);
+        try {
+          const { data: dataTr } = await axios.get(urlTr, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
+          if (dataTr && dataTr.status === 'ok' && dataTr.data) {
+            const moviesTr = dataTr.data.movies || [];
+            console.log(`[YTS] Поиск по транслиту: найдено ${moviesTr.length} фильмов`);
+            if (moviesTr.length) return this.normalizeMovies(moviesTr);
+          }
+        } catch (error) {
+          console.log(`[YTS] Ошибка поиска по транслиту:`, error.message);
+        }
+      }
+      
+      // Альтернативный поиск по популярным названиям
+      const popularNames = this.getPopularEnglishNames(query);
+      for (const name of popularNames) {
+        const urlAlt = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(name)}&page=${page}&limit=20`;
+        console.log(`[YTS] Альтернативный поиск: ${urlAlt}`);
+        try {
+          const { data: dataAlt } = await axios.get(urlAlt, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
+          if (dataAlt && dataAlt.status === 'ok' && dataAlt.data) {
+            const moviesAlt = dataAlt.data.movies || [];
+            console.log(`[YTS] Альтернативный поиск "${name}": найдено ${moviesAlt.length} фильмов`);
+            if (moviesAlt.length) return this.normalizeMovies(moviesAlt);
+          }
+        } catch (error) {
+          console.log(`[YTS] Ошибка альтернативного поиска "${name}":`, error.message);
         }
       }
     }
 
     // Fallback через TMDB для русскоязычных запросов
     if (this.tmdbApiKey && this.hasNonAscii(query)) {
+      console.log(`[YTS] Пробуем TMDB fallback для "${query}"`);
       const resolved = await this.tmdbResolveQuery(query);
       if (resolved) {
+        console.log(`[YTS] TMDB разрешил в:`, resolved);
         // Пробуем сперва по IMDB id, затем по оригинальному названию
         let url2 = '';
         if (resolved.imdb_id) {
@@ -115,14 +220,23 @@ class YtsController {
         } else {
           url2 = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(resolved.original_title)}&limit=20`;
         }
-        const { data: data2 } = await axios.get(url2, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-        if (data2 && data2.status === 'ok' && data2.data) {
-          const movies2 = data2.data.movies || [];
-          if (movies2.length) return this.normalizeMovies(movies2);
+        console.log(`[YTS] TMDB fallback поиск: ${url2}`);
+        try {
+          const { data: data2 } = await axios.get(url2, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
+          if (data2 && data2.status === 'ok' && data2.data) {
+            const movies2 = data2.data.movies || [];
+            console.log(`[YTS] TMDB fallback: найдено ${movies2.length} фильмов`);
+            if (movies2.length) return this.normalizeMovies(movies2);
+          }
+        } catch (error) {
+          console.log(`[YTS] Ошибка TMDB fallback:`, error.message);
         }
+      } else {
+        console.log(`[YTS] TMDB не смог разрешить запрос`);
       }
     }
 
+    console.log(`[YTS] Ничего не найдено для "${query}"`);
     return [];
   }
 
