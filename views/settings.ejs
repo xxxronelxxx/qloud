@@ -161,6 +161,24 @@
         </div>
       </div>
     </div>
+    <div class="col-12 col-lg-6">
+      <div class="card rounded-4">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Kinopoisk API</h2>
+          <form id="kinopoiskSettingsForm" class="d-grid gap-3">
+            <div>
+              <label class="form-label">Kinopoisk API ключ</label>
+              <input type="text" id="kinopoiskApiKey" class="form-control rounded-4" placeholder="N6SXSYN-P1PM36E-Q6Y1NK4-GBFNPK7">
+              <div class="form-text">Ключ для поиска фильмов через официальный Kinopoisk API</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary rounded-4" type="submit">Сохранить</button>
+              <button class="btn btn-outline-info rounded-4" type="button" id="testKinopoiskBtn">Проверить ключ</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="row g-4 mt-1">
@@ -639,6 +657,75 @@
             }
           } catch (error) {
             console.error('TMDB test error:', error);
+            alert('Ошибка при проверке подключения: ' + error.message);
+          }
+        });
+
+        // Kinopoisk API настройки
+        const kinopoiskApiKeyInput = document.getElementById('kinopoiskApiKey');
+        const kinopoiskSettingsForm = document.getElementById('kinopoiskSettingsForm');
+        const testKinopoiskBtn = document.getElementById('testKinopoiskBtn');
+
+        if (kinopoiskApiKeyInput) {
+            kinopoiskApiKeyInput.value = config.kinopoiskApiKey || 'N6SXSYN-P1PM36E-Q6Y1NK4-GBFNPK7';
+        }
+
+        if (kinopoiskSettingsForm) {
+            kinopoiskSettingsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const apiKey = kinopoiskApiKeyInput.value.trim();
+                
+                if (!apiKey) {
+                    alert('Введите Kinopoisk API ключ');
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/settings', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ kinopoiskApiKey: apiKey })
+                    });
+                    
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        alert('Настройки Kinopoisk API обновлены');
+                    } else {
+                        alert(data.msg || 'Ошибка обновления настроек');
+                    }
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    alert('Ошибка сети: ' + error.message);
+                }
+            });
+        }
+
+        testKinopoiskBtn.addEventListener('click', async () => {
+          const apiKey = kinopoiskApiKeyInput.value.trim();
+          
+          if (!apiKey) {
+            alert('Введите Kinopoisk API ключ для проверки');
+            return;
+          }
+          
+          try {
+            console.log('Testing Kinopoisk API connection...');
+            const res = await fetch('/api/kinopoisk/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ apiKey })
+            });
+            
+            const data = await res.json();
+            if (data.success) {
+              alert('Kinopoisk API успешно подключен!');
+            } else {
+              alert(data.msg || 'Ошибка подключения к Kinopoisk API');
+            }
+          } catch (error) {
+            console.error('Kinopoisk test error:', error);
             alert('Ошибка при проверке подключения: ' + error.message);
           }
         });

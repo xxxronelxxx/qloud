@@ -184,6 +184,39 @@ router.get('/kinopoisk/stats', adminOnly, (req, res) => {
   }
 });
 
+// Kinopoisk API тест
+router.post('/kinopoisk/test', adminOnly, async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.json({ success: false, msg: 'Не указан API ключ' });
+    }
+
+    // Тестируем подключение к Kinopoisk API
+    const testURL = 'https://kinopoiskapiunofficial.tech/api/v2.1/films/search-by-keyword';
+    const params = { keyword: 'тест', page: 1 };
+
+    const response = await axios.get(testURL, {
+      params: params,
+      headers: {
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (response.status === 200) {
+      res.json({ success: true, msg: 'Kinopoisk API доступен' });
+    } else {
+      res.json({ success: false, msg: `Ошибка API: ${response.status}` });
+    }
+  } catch (error) {
+    console.error('Kinopoisk API test error:', error.message);
+    res.json({ success: false, msg: `Ошибка подключения: ${error.message}` });
+  }
+});
+
 // Парсинг API
 router.post('/parser/search', adminOnly, async (req, res) => {
   try {

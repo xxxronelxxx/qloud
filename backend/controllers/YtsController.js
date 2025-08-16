@@ -1,7 +1,6 @@
 const axios = require('axios');
-const parseTorrent = require('parse-torrent');
+const cheerio = require('cheerio');
 const Settings = require('../models/SettingsModel');
-const RussianMovieService = require('../services/RussianMovieService');
 const https = require('https');
 
 class YtsController {
@@ -13,165 +12,185 @@ class YtsController {
     this.movieCache = new Map(); // Кэш для найденных фильмов
   }
 
-  // Проверка наличия не-ASCII символов (кириллица)
-  hasNonAscii(str) {
-    return /[^\x00-\x7F]/.test(str);
+  // Поиск фильмов через парсинг Kinopoisk
+  async search(query, page = 1) {
+    console.log(`[KINOPOISK] Поиск: "${query}" (страница ${page})`);
+    
+    try {
+      // Поиск через парсинг Kinopoisk
+      const searchResult = await this.searchKinopoiskWeb(query);
+      
+      if (searchResult) {
+        console.log(`[KINOPOISK] Найден фильм: ${searchResult.title}`);
+        
+        // Сохраняем в кэше
+        const movieId = `kinopoisk_${Date.now()}`;
+        this.movieCache.set(movieId, searchResult);
+        
+        // Форматируем результат
+        return this.formatKinopoiskResult(searchResult, movieId);
+      }
+
+      console.log(`[KINOPOISK] Фильм не найден для "${query}"`);
+      return [];
+      
+    } catch (error) {
+      console.log(`[KINOPOISK] Ошибка поиска:`, error.message);
+      return [];
+    }
   }
 
-  // Форматирование русских фильмов (без торрентов)
-  formatRussianMovie(russianMovie) {
-    // Определяем URL постера
-    let posterUrl = '';
-    if (russianMovie.poster_path) {
-      if (russianMovie.poster_path.startsWith('http')) {
-        posterUrl = russianMovie.poster_path;
-      } else {
-        posterUrl = `https://image.tmdb.org/t/p/w500${russianMovie.poster_path}`;
+  // Парсинг Kinopoisk
+  async searchKinopoiskWeb(query) {
+    try {
+      console.log(`[KINOPOISK] Парсинг Kinopoisk для: "${query}"`);
+      
+      const searchURL = 'https://www.kinopoisk.ru/index.php';
+      const params = {
+        kp_query: query,
+        what: ''
+      };
+
+      const response = await axios.get(searchURL, {
+        params: params,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        },
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Ищем первый найденный фильм
+      const movieElement = $('.search_results .element').first();
+      
+      if (movieElement.length > 0) {
+        const title = movieElement.find('.name a').text().trim();
+        const year = movieElement.find('.year').text().trim();
+        const rating = movieElement.find('.rating').text().trim();
+        const posterUrl = movieElement.find('.pic img').attr('src') || '';
+        const description = movieElement.find('.descr').text().trim();
+        
+        return {
+          title: title,
+          year: parseInt(year) || null,
+          rating: parseFloat(rating) || null,
+          posterUrl: posterUrl,
+          description: description,
+          source: 'kinopoisk_web'
+        };
       }
+      
+      return null;
+    } catch (error) {
+      console.log(`[KINOPOISK] Ошибка парсинга:`, error.message);
+      return null;
     }
-    
-    // Создаем правильный ID для кэша
-    const movieId = `russian_${russianMovie.id}`;
-    
+  }
+
+  // Форматирование результата Kinopoisk
+  formatKinopoiskResult(film, movieId) {
     return [{
       id: movieId,
-      movieId: movieId, // Важно: movieId должен совпадать с тем, что в кэше
-      title: `${russianMovie.title} (${russianMovie.year}) [Русский фильм]`,
+      movieId: movieId,
+      title: `${film.title} (${film.year || 'N/A'})`,
       quality: 'Unknown',
       type: 'movie',
       size: 'Unknown',
       seeds: 0,
       leeches: 0,
-      date: russianMovie.release_date || new Date().toISOString(),
-      hash: '', // Пустой hash для русских фильмов
-      torrentUrl: '', // Пустой URL для русских фильмов
+      date: film.year ? `${film.year}-01-01` : new Date().toISOString(),
+      hash: '', // Нет торрентов
+      torrentUrl: '', // Нет торрентов
       magnet: '',
-      poster: posterUrl,
-      year: russianMovie.year,
-      rating: russianMovie.rating,
-      overview: russianMovie.overview,
-      director: russianMovie.director,
-      cast: russianMovie.cast,
-      genres: russianMovie.genres,
-      runtime: russianMovie.runtime,
-      source: russianMovie.source,
-      is_russian: russianMovie.is_russian,
-      type: russianMovie.type,
-      original_title: russianMovie.original_title
+      poster: film.posterUrl || '',
+      year: film.year,
+      rating: film.rating,
+      overview: film.description || '',
+      director: '',
+      cast: [],
+      genres: [],
+      runtime: null,
+      source: film.source,
+      is_russian: true,
+      original_title: film.title,
+      countries: [],
+      ratingKinopoisk: film.rating,
+      ratingImdb: null
     }];
   }
 
-  async search(query, page = 1) {
-    console.log(`[RUSSIAN] Поиск: "${query}" (страница ${page})`);
-    
-    // Поиск русских фильмов через RussianMovieService
-    try {
-      console.log(`[RUSSIAN] Поиск русских фильмов для "${query}"...`);
-      const russianMovie = await RussianMovieService.searchRussianMovies(query);
-      
-      if (russianMovie) {
-        console.log(`[RUSSIAN] Найден русский фильм: ${russianMovie.title} (${russianMovie.source})`);
-        
-        // Сохраняем данные фильма в кэше для деталей
-        const movieId = `russian_${russianMovie.id}`;
-        this.movieCache.set(movieId, russianMovie);
-        
-        const ytsFormatResult = this.formatRussianMovie(russianMovie);
-        
-        return ytsFormatResult;
-      } else {
-        console.log(`[RUSSIAN] Русский фильм не найден для "${query}"`);
-        return [];
-      }
-    } catch (error) {
-      console.log(`[RUSSIAN] Ошибка поиска русских фильмов:`, error.message);
-      return [];
-    }
-  }
-
-  // Получение детальной информации о фильме
+  // Получение детальной информации о фильме (для API)
   async details(movieId) {
     try {
-      console.log(`[RUSSIAN] Получение деталей фильма: ${movieId}`);
+      console.log(`[KINOPOISK] Получение деталей фильма: ${movieId}`);
       
-      // Если это русский фильм, получаем детали из кэша
-      if (movieId.startsWith('russian_')) {
+      // Если это Kinopoisk фильм, получаем детали из кэша
+      if (movieId.startsWith('kinopoisk_')) {
         const cachedMovie = this.movieCache.get(movieId);
         
         if (cachedMovie) {
           return {
-            id: cachedMovie.id,
+            id: movieId,
             title: cachedMovie.title,
             year: cachedMovie.year,
             rating: cachedMovie.rating,
-            runtime: cachedMovie.runtime,
-            genres: cachedMovie.genres || [],
-            description: cachedMovie.overview || '',
-            poster: cachedMovie.poster_path ? `https://image.tmdb.org/t/p/w500${cachedMovie.poster_path}` : '',
-            background: cachedMovie.backdrop_path ? `https://image.tmdb.org/t/p/original${cachedMovie.backdrop_path}` : '',
+            runtime: null,
+            genres: [],
+            description: cachedMovie.description || '',
+            poster: cachedMovie.posterUrl || '',
+            background: '',
             imdbCode: '',
-            cast: cachedMovie.cast || [],
-            director: cachedMovie.director,
+            cast: [],
+            director: '',
             source: cachedMovie.source,
-            is_russian: cachedMovie.is_russian,
-            overview: cachedMovie.overview,
-            original_title: cachedMovie.original_title,
-            torrents: [] // Русские фильмы не имеют торрентов в системе
+            is_russian: true,
+            overview: cachedMovie.description,
+            original_title: cachedMovie.title,
+            countries: ['Россия'],
+            ratingKinopoisk: cachedMovie.rating,
+            ratingImdb: null,
+            torrents: [] // Нет торрентов
           };
         }
       }
       
       return null;
     } catch (error) {
-      console.error(`[RUSSIAN] Ошибка получения деталей:`, error.message);
+      console.error(`[KINOPOISK] Ошибка получения деталей:`, error.message);
       return null;
     }
   }
 
-  // Получение торрентов для фильма (заглушка для русских фильмов)
+  // Получение торрентов для фильма (заглушка)
   async getMovieTorrents(movieId) {
-    try {
-      console.log(`[RUSSIAN] Получение торрентов для: ${movieId}`);
-      
-      // Для русских фильмов возвращаем пустой массив, так как торренты не интегрированы
-      if (movieId.startsWith('russian_')) {
-        return [];
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`[RUSSIAN] Ошибка получения торрентов:`, error.message);
-      return [];
-    }
+    return [];
   }
 
   // Статистика
   getStats() {
     return {
-      name: 'Russian Movies Search',
-      description: 'Поиск русских фильмов через Kinopoisk и другие русские источники',
-      sources: ['kinopoisk', 'kinopoisk_web', 'rutor', 'nyaa']
+      name: 'Kinopoisk Web Search',
+      description: 'Поиск фильмов через парсинг Kinopoisk',
+      sources: ['kinopoisk_web']
     };
   }
 
   // Создание magnet-ссылки (заглушка для совместимости)
   buildMagnet(hash, name = '') {
-    const trackers = [
-      'udp://tracker.opentrackr.org:1337/announce',
-      'udp://tracker.openbittorrent.com:6969/announce',
-      'udp://opentracker.i2p.rocks:6969/announce',
-      'udp://tracker.tiny-vps.com:6969/announce',
-      'udp://tracker.internetwarriors.net:1337/announce'
-    ];
-    const tr = trackers.map(t => `&tr=${encodeURIComponent(t)}`).join('');
-    const dn = name ? `&dn=${encodeURIComponent(name)}` : '';
-    return `magnet:?xt=urn:btih:${hash}${dn}${tr}`;
+    return `magnet:?xt=urn:btih:${hash}`;
   }
 
   // Получение файлов по URL торрента (заглушка для совместимости)
   async getFilesByTorrentUrl(torrentUrl) {
     return {
-      name: 'Russian Movie',
+      name: 'Kinopoisk Movie',
       files: []
     };
   }
