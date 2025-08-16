@@ -10,6 +10,7 @@ class YtsController {
       rejectUnauthorized: false,
       timeout: 10000
     });
+    this.movieCache = new Map(); // Кэш для найденных фильмов
   }
 
   // Проверка наличия не-ASCII символов (кириллица)
@@ -67,7 +68,14 @@ class YtsController {
       
       if (russianMovie) {
         console.log(`[RUSSIAN] Найден русский фильм: ${russianMovie.title} (${russianMovie.source})`);
-        return this.formatRussianMovie(russianMovie);
+        
+        // Сохраняем данные фильма в кэше для деталей
+        const movieId = `russian_${russianMovie.id}`;
+        this.movieCache.set(movieId, russianMovie);
+        
+        const ytsFormatResult = this.formatRussianMovie(russianMovie);
+        
+        return ytsFormatResult;
       } else {
         console.log(`[RUSSIAN] Русский фильм не найден для "${query}"`);
         return [];
@@ -79,15 +87,35 @@ class YtsController {
   }
 
   // Получение детальной информации о фильме
-  async getMovieDetails(movieId) {
+  async details(movieId) {
     try {
       console.log(`[RUSSIAN] Получение деталей фильма: ${movieId}`);
       
-      // Если это русский фильм, получаем детали через RussianMovieService
+      // Если это русский фильм, получаем детали из кэша
       if (movieId.startsWith('russian_')) {
-        const actualId = movieId.replace('russian_', '');
-        const details = await RussianMovieService.getRussianMovieDetails(actualId);
-        return details;
+        const cachedMovie = this.movieCache.get(movieId);
+        
+        if (cachedMovie) {
+          return {
+            id: cachedMovie.id,
+            title: cachedMovie.title,
+            year: cachedMovie.year,
+            rating: cachedMovie.rating,
+            runtime: cachedMovie.runtime,
+            genres: cachedMovie.genres || [],
+            description: cachedMovie.overview || '',
+            poster: cachedMovie.poster_path ? `https://image.tmdb.org/t/p/w500${cachedMovie.poster_path}` : '',
+            background: cachedMovie.backdrop_path ? `https://image.tmdb.org/t/p/original${cachedMovie.backdrop_path}` : '',
+            imdbCode: '',
+            cast: cachedMovie.cast || [],
+            director: cachedMovie.director,
+            source: cachedMovie.source,
+            is_russian: cachedMovie.is_russian,
+            overview: cachedMovie.overview,
+            original_title: cachedMovie.original_title,
+            torrents: [] // Русские фильмы не имеют торрентов в системе
+          };
+        }
       }
       
       return null;
@@ -120,6 +148,28 @@ class YtsController {
       name: 'Russian Movies Search',
       description: 'Поиск русских фильмов через Kinopoisk и другие русские источники',
       sources: ['kinopoisk', 'kinopoisk_web', 'rutor', 'nyaa']
+    };
+  }
+
+  // Создание magnet-ссылки (заглушка для совместимости)
+  buildMagnet(hash, name = '') {
+    const trackers = [
+      'udp://tracker.opentrackr.org:1337/announce',
+      'udp://tracker.openbittorrent.com:6969/announce',
+      'udp://opentracker.i2p.rocks:6969/announce',
+      'udp://tracker.tiny-vps.com:6969/announce',
+      'udp://tracker.internetwarriors.net:1337/announce'
+    ];
+    const tr = trackers.map(t => `&tr=${encodeURIComponent(t)}`).join('');
+    const dn = name ? `&dn=${encodeURIComponent(name)}` : '';
+    return `magnet:?xt=urn:btih:${hash}${dn}${tr}`;
+  }
+
+  // Получение файлов по URL торрента (заглушка для совместимости)
+  async getFilesByTorrentUrl(torrentUrl) {
+    return {
+      name: 'Russian Movie',
+      files: []
     };
   }
 }
