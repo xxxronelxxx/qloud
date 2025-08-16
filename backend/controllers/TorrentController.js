@@ -623,7 +623,7 @@ class TorrentController {
   remove = async (req, res) => {
     try {
       const { infoHash } = req.params;
-      const { deleteFiles } = req.query || {};
+      const { files } = req.query || {};
       const client = await this.getClient();
       const torrent = client.get(infoHash);
 
@@ -631,15 +631,70 @@ class TorrentController {
         return res.json({ success: false, msg: 'Торрент не найден' });
       }
 
-      client.remove(infoHash, { destroyStore: !!deleteFiles }, err => {
-        if (err) return res.json({ success: false, msg: err.message });
-        try { torrent.destroy?.(); } catch (_) {}
+      console.log(`[Удаление торрента] ${torrent.name || torrent.infoHash}, удаление файлов: ${!!files}`);
+
+      // Сначала останавливаем торрент
+      if (!torrent.paused) {
+        try {
+          torrent.pause();
+        } catch (e) {
+          console.log(`[Предупреждение] Не удалось остановить торрент: ${e.message}`);
+        }
+      }
+
+      // Удаляем торрент с правильными опциями
+      const destroyStore = !!files; // Удаляем файлы только если запрошено
+      
+      try {
+        // Удаляем торрент из клиента
+        client.remove(infoHash, { destroyStore }, (err) => {
+          if (err) {
+            console.error(`[Ошибка удаления торрента] ${infoHash}:`, err.message);
+            return res.json({ success: false, msg: `Ошибка удаления: ${err.message}` });
+          }
+          
+          try {
+            // Пытаемся уничтожить торрент
+            if (torrent.destroy && typeof torrent.destroy === 'function') {
+              torrent.destroy();
+            }
+          } catch (destroyErr) {
+            console.log(`[Предупреждение] Не удалось уничтожить торрент: ${destroyErr.message}`);
+          }
+          
+          // Очищаем внутренние ссылки
+          this.pausedTorrents.delete(infoHash);
+          this.torrentSources.delete(infoHash);
+          
+          // Отправляем событие удаления
+          this.io && this.io.emit('torrent:remove', { infoHash });
+          
+          console.log(`[Торрент удален] ${infoHash}, файлы: ${destroyStore ? 'удалены' : 'сохранены'}`);
+          res.json({ success: true, msg: 'Торрент удален' });
+        });
+      } catch (removeErr) {
+        console.error(`[Критическая ошибка удаления] ${infoHash}:`, removeErr.message);
+        
+        // Пытаемся принудительно удалить торрент
+        try {
+          if (torrent.destroy && typeof torrent.destroy === 'function') {
+            torrent.destroy();
+          }
+        } catch (destroyErr) {
+          console.log(`[Предупреждение] Не удалось принудительно уничтожить торрент: ${destroyErr.message}`);
+        }
+        
+        // Очищаем внутренние ссылки
         this.pausedTorrents.delete(infoHash);
         this.torrentSources.delete(infoHash);
+        
+        // Отправляем событие удаления
         this.io && this.io.emit('torrent:remove', { infoHash });
-        res.json({ success: true });
-      });
+        
+        res.json({ success: true, msg: 'Торрент принудительно удален' });
+      }
     } catch (e) {
+      console.error(`[Ошибка метода remove] ${req.params.infoHash}:`, e.message);
       res.json({ success: false, msg: e.message });
     }
   }
@@ -757,7 +812,9 @@ class TorrentController {
       console.log(`[Принудительный перезапуск] ${torrent.name || torrent.infoHash}`);
 
       // Останавливаем торрент
-      torrent.pause();
+      if (!torrent.paused) {
+        torrent.pause();
+      }
       
       // Ждем немного
       await new Promise(resolve => setTimeout(resolve, 2000));
@@ -878,7 +935,9 @@ class TorrentController {
       console.log(`[Принудительное переподключение] ${torrent.name || torrent.infoHash}`);
 
       // Останавливаем торрент
-      torrent.pause();
+      if (!torrent.paused) {
+        torrent.pause();
+      }
       
       // Ждем немного
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1071,9 +1130,15 @@ class TorrentController {
       }
 
       // Принудительно перезапускаем торрент для лучшего подключения
-      torrent.pause();
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      torrent.resume();
+      if (torrent.paused) {
+        // Если торрент уже на паузе, просто запускаем его
+        torrent.resume();
+      } else {
+        // Если торрент активен, останавливаем и запускаем заново
+        torrent.pause();
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        torrent.resume();
+      }
 
       // Отправляем обновление
       const serialized = this.serializeTorrent(torrent);
