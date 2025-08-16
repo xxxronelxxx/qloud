@@ -129,7 +129,7 @@ router.post('/russian-movies/search', adminOnly, async (req, res) => {
     if (result) {
       res.json({ success: true, data: result });
     } else {
-      res.json({ success: false, msg: 'Русский фильм не найден' });
+      res.json({ success: false, msg: 'Фильм не найден' });
     }
   } catch (error) {
     res.json({ success: false, msg: error.message });
@@ -148,54 +148,7 @@ router.get('/russian-movies/stats', adminOnly, (req, res) => {
 router.post('/russian-movies/cache/clear', adminOnly, (req, res) => {
   try {
     RussianMovieService.clearCache();
-    res.json({ success: true, msg: 'Кэш русских фильмов очищен' });
-  } catch (error) {
-    res.json({ success: false, msg: error.message });
-  }
-});
-
-// Локальная база русских фильмов API
-router.get('/russian-movies/local/all', adminOnly, (req, res) => {
-  try {
-    const movies = RussianMovieService.getAllLocalMovies();
-    const series = RussianMovieService.getAllLocalSeries();
-    res.json({ 
-      success: true, 
-      data: { movies, series } 
-    });
-  } catch (error) {
-    res.json({ success: false, msg: error.message });
-  }
-});
-
-router.get('/russian-movies/local/movies', adminOnly, (req, res) => {
-  try {
-    const movies = RussianMovieService.getAllLocalMovies();
-    res.json({ success: true, data: movies });
-  } catch (error) {
-    res.json({ success: false, msg: error.message });
-  }
-});
-
-router.get('/russian-movies/local/series', adminOnly, (req, res) => {
-  try {
-    const series = RussianMovieService.getAllLocalSeries();
-    res.json({ success: true, data: series });
-  } catch (error) {
-    res.json({ success: false, msg: error.message });
-  }
-});
-
-router.post('/russian-movies/local/add', adminOnly, (req, res) => {
-  try {
-    const item = req.body;
-    
-    if (!item.title || !item.type) {
-      return res.json({ success: false, msg: 'Не указаны обязательные поля: title, type' });
-    }
-    
-    RussianMovieService.addCustomItem(item);
-    res.json({ success: true, msg: 'Фильм/сериал добавлен в локальную базу' });
+    res.json({ success: true, msg: 'Кэш очищен' });
   } catch (error) {
     res.json({ success: false, msg: error.message });
   }

@@ -1,7 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Settings = require('../models/SettingsModel');
-const RussianMoviesDB = require('./RussianMoviesDatabase');
 const KinopoiskService = require('./KinopoiskService');
 const RussianMoviesParser = require('./RussianMoviesParser');
 
@@ -14,9 +13,8 @@ class RussianMovieService {
         // Русские источники данных
         this.sources = {
             kinopoisk: 'https://kinopoisk.ru',
-            kinozal: 'https://kinozal.tv',
-            rutracker: 'https://rutracker.org',
-            rutor: 'http://rutor.info'
+            rutor: 'http://rutor.info',
+            nyaa: 'https://nyaa.si'
         };
     }
 
@@ -26,7 +24,7 @@ class RussianMovieService {
         return settings.tmdbApiKey || process.env.TMDB_API_KEY || '';
     }
 
-    // Поиск русских фильмов с приоритетом локальной базы
+    // Поиск русских фильмов
     async searchRussianMovies(query, year = null) {
         try {
             console.log(`🔍 Поиск русских фильмов: "${query}"${year ? ` (${year})` : ''}`);
@@ -39,26 +37,7 @@ class RussianMovieService {
                 return cached.data;
             }
 
-            // 1. Сначала ищем в локальной базе данных
-            console.log('🔍 Поиск в локальной базе русских фильмов...');
-            const localResults = RussianMoviesDB.search(query, year);
-            
-            if (localResults.length > 0) {
-                const bestMatch = localResults[0];
-                console.log(`✅ Найден в локальной базе: ${bestMatch.title} (${bestMatch.year})`);
-                
-                // Форматируем результат в нужном формате
-                const result = this.formatLocalResult(bestMatch);
-                
-                this.cache.set(cacheKey, {
-                    data: result,
-                    timestamp: Date.now()
-                });
-                
-                return result;
-            }
-
-            // 2. Пробуем Kinopoisk API
+            // 1. Пробуем Kinopoisk API
             console.log('🔍 Поиск в Kinopoisk API...');
             const kinopoiskResult = await KinopoiskService.searchMovies(query, year);
             
@@ -73,7 +52,7 @@ class RussianMovieService {
                 return kinopoiskResult;
             }
 
-            // 3. Пробуем мультиисточниковый поиск (парсинг)
+            // 2. Пробуем мультиисточниковый поиск (парсинг)
             console.log('🔍 Мультиисточниковый поиск...');
             const parserResult = await RussianMoviesParser.searchMultiSource(query, year);
             
@@ -91,7 +70,7 @@ class RussianMovieService {
                 return formattedResult;
             }
 
-            // 4. Если не найден в локальной базе, пробуем TMDB с фильтрацией
+            // 3. Если не найден, пробуем TMDB с фильтрацией
             console.log('🔍 Поиск в TMDB с фильтрацией русских фильмов...');
             const tmdbResult = await this.searchTMDBWithFiltering(query, year);
             
@@ -103,7 +82,7 @@ class RussianMovieService {
                 return tmdbResult;
             }
 
-            // 5. Если ничего не найдено, возвращаем null
+            // 4. Если ничего не найдено, возвращаем null
             console.log('❌ Русский фильм не найден ни в одном источнике');
             return null;
             
@@ -111,36 +90,6 @@ class RussianMovieService {
             console.error('💥 Russian Movie Search Error:', error.message);
             return null;
         }
-    }
-
-    // Форматирование результата из локальной базы
-    formatLocalResult(item) {
-        return {
-            id: item.id,
-            title: item.title,
-            original_title: item.original_title,
-            year: item.year,
-            rating: item.rating,
-            overview: item.overview,
-            genres: item.genres,
-            runtime: item.runtime || item.episodes,
-            poster_path: null, // Локальная база не содержит постеров
-            backdrop_path: null,
-            release_date: `${item.year}-01-01`,
-            budget: null,
-            revenue: null,
-            director: item.director,
-            cast: item.cast,
-            production_companies: [],
-            tagline: '',
-            status: 'Released',
-            original_language: 'ru',
-            is_russian: true,
-            is_translation: false,
-            type: item.type,
-            episodes: item.episodes,
-            source: 'local_database'
-        };
     }
 
     // Форматирование результата парсинга
@@ -154,7 +103,7 @@ class RussianMovieService {
             overview: parserResult.description || '',
             genres: [],
             runtime: null,
-            poster_path: null,
+            poster_path: parserResult.poster_path || null,
             backdrop_path: null,
             release_date: parserResult.year ? `${parserResult.year}-01-01` : null,
             budget: null,
@@ -383,7 +332,6 @@ class RussianMovieService {
 
     // Получение статистики
     getStats() {
-        const localStats = RussianMoviesDB.getStats();
         const kinopoiskStats = KinopoiskService.getStats();
         const parserStats = RussianMoviesParser.getStats();
         
@@ -391,25 +339,9 @@ class RussianMovieService {
             cacheSize: this.cache.size,
             cacheTimeout: this.cacheTimeout,
             sources: Object.keys(this.sources),
-            localDatabase: localStats,
             kinopoisk: kinopoiskStats,
             parser: parserStats
         };
-    }
-
-    // Получение всех фильмов из локальной базы
-    getAllLocalMovies() {
-        return RussianMoviesDB.getAllMovies();
-    }
-
-    // Получение всех сериалов из локальной базы
-    getAllLocalSeries() {
-        return RussianMoviesDB.getAllSeries();
-    }
-
-    // Добавление пользовательского фильма/сериала
-    addCustomItem(item) {
-        RussianMoviesDB.addCustomItem(item);
     }
 }
 
