@@ -982,4 +982,196 @@
       alert('Ошибка сети при принудительном переподключении');
     }
   }
+
+  // Обработчики для кнопок управления
+  document.addEventListener('click', async (e) => {
+    const target = e.target;
+    
+    // Кнопка пауза/пуск
+    if (target.hasAttribute('data-toggle')) {
+      const action = target.getAttribute('data-toggle');
+      const infoHash = target.closest('[data-info-hash]').getAttribute('data-info-hash');
+      
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/${action}`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log(`[${action}] ${result.msg}`);
+          // Обновляем список
+          await refreshList();
+        } else {
+          console.error(`[${action}] Ошибка:`, result.msg);
+        }
+      } catch (error) {
+        console.error(`[${action}] Ошибка:`, error);
+      }
+    }
+    
+    // Кнопка удаления
+    if (target.hasAttribute('data-remove')) {
+      const infoHash = target.getAttribute('data-remove');
+      if (confirm('Удалить торрент?')) {
+        try {
+          const response = await fetch(`/torrents/api/${infoHash}`, { method: 'DELETE' });
+          const result = await response.json();
+          
+          if (result.success) {
+            console.log('[Удаление] Торрент удален');
+            await refreshList();
+          } else {
+            console.error('[Удаление] Ошибка:', result.msg);
+          }
+        } catch (error) {
+          console.error('[Удаление] Ошибка:', error);
+        }
+      }
+    }
+    
+    // Кнопка удаления с файлами
+    if (target.hasAttribute('data-remove-files')) {
+      const infoHash = target.getAttribute('data-remove-files');
+      if (confirm('Удалить торрент и все файлы?')) {
+        try {
+          const response = await fetch(`/torrents/api/${infoHash}?files=true`, { method: 'DELETE' });
+          const result = await response.json();
+          
+          if (result.success) {
+            console.log('[Удаление] Торрент и файлы удалены');
+            await refreshList();
+          } else {
+            console.error('[Удаление] Ошибка:', result.msg);
+          }
+        } catch (error) {
+          console.error('[Удаление] Ошибка:', error);
+        }
+      }
+    }
+    
+    // Кнопка принудительного запуска
+    if (target.hasAttribute('data-force-start')) {
+      const infoHash = target.getAttribute('data-force-start');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-start`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительный запуск]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительный запуск] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительный запуск] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительной загрузки метаданных
+    if (target.hasAttribute('data-force-metadata')) {
+      const infoHash = target.getAttribute('data-force-metadata');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-metadata`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительная загрузка метаданных]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительная загрузка метаданных] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительная загрузка метаданных] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительного подключения
+    if (target.hasAttribute('data-force-connect')) {
+      const infoHash = target.getAttribute('data-force-connect');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-connect`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительное подключение]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительное подключение] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительное подключение] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительного переподключения
+    if (target.hasAttribute('data-force-reconnect')) {
+      const infoHash = target.getAttribute('data-force-reconnect');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-reconnect`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительное переподключение]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительное переподключение] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительное переподключение] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительного перезапуска
+    if (target.hasAttribute('data-force-restart')) {
+      const infoHash = target.getAttribute('data-force-restart');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-restart`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительный перезапуск]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительный перезапуск] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительный перезапуск] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка обновления статистики
+    if (target.hasAttribute('data-force-update-stats')) {
+      const infoHash = target.getAttribute('data-force-update-stats');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-update-stats`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Обновление статистики]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Обновление статистики] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Обновление статистики] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка диагностики
+    if (target.hasAttribute('data-diagnose')) {
+      const infoHash = target.getAttribute('data-diagnose');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/diagnose`);
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Диагностика]', result.diagnosis);
+          alert(`Диагностика торрента:\n\n${JSON.stringify(result.diagnosis, null, 2)}`);
+        } else {
+          console.error('[Диагностика] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Диагностика] Ошибка:', error);
+      }
+    }
+  });
 </script>

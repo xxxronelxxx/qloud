@@ -63,60 +63,59 @@ class TorrentController {
   }
 
   serializeTorrent(t) {
-    const hasMetadata = t.files && t.files.length > 0 && t.name && !t.name.includes('Загрузка метаданных');
+    if (!t || !t.infoHash) {
+      console.error('[Ошибка] serializeTorrent: торрент или infoHash не определены');
+      return null;
+    }
+
+    // Проверяем наличие метаданных
+    const hasMetadata = t.files && t.files.length > 0;
     
-    // Правильно считаем количество пиров
+    // Безопасно получаем количество пиров
     let numPeers = 0;
     let numSeeds = 0;
     let numLeeches = 0;
     
-    if (t.wires && t.wires.length > 0) {
-      // Считаем реально подключенных пиров
-      numPeers = t.wires.length;
-      
-      // Считаем сиды и личи по их статусу
-      t.wires.forEach(wire => {
-        if (wire.peer && wire.peer.isSeeder) {
-          numSeeds++;
-        } else {
-          numLeeches++;
-        }
-      });
-    } else {
-      // Если нет подключений, используем стандартные значения
-      numPeers = t.numPeers || 0;
-      numSeeds = t.numSeeds || 0;
-      numLeeches = t.numLeeches || 0;
-    }
-    
-    // Принудительно обновляем статистику торрента
-    if (t.tracker) {
-      try {
-        // Принудительно обновляем трекер
-        t.tracker.announce();
-      } catch (e) {
-        // Игнорируем ошибки трекера
+    try {
+      if (t.wires && Array.isArray(t.wires)) {
+        numPeers = t.wires.length;
+        numSeeds = t.wires.filter(wire => wire.uploaded > 0).length;
+        numLeeches = numPeers - numSeeds;
+      } else if (t.numPeers !== undefined) {
+        numPeers = t.numPeers;
+        numSeeds = t.numSeeds || 0;
+        numLeeches = t.numLeeches || 0;
       }
+    } catch (e) {
+      console.log(`[Ошибка подсчета пиров] ${t.name || t.infoHash}:`, e.message);
     }
-    
-    // Правильно сериализуем файлы без циклических ссылок
+
+    // Безопасно сериализуем файлы
     let serializedFiles = [];
     if (hasMetadata && t.files && t.files.length > 0) {
-      serializedFiles = t.files.map((file, index) => ({
-        index: index,
-        name: file.name || 'Неизвестный файл',
-        length: file.length || 0,
-        path: file.path || '',
-        selected: file.selected || false,
-        mime: this.getMimeType(file.name) || 'application/octet-stream'
-      }));
+      try {
+        serializedFiles = t.files.map((file, index) => ({
+          index: index,
+          name: file.name || 'Неизвестный файл',
+          length: file.length || 0,
+          path: file.path || '',
+          selected: file.selected || false,
+          mime: this.getMimeType(file.name) || 'application/octet-stream'
+        }));
+      } catch (e) {
+        console.log(`[Ошибка сериализации файлов] ${t.name || t.infoHash}:`, e.message);
+      }
     }
-    
+
+    // Безопасно получаем имя торрента
+    const torrentName = t.name || t.infoHash || 'Неизвестный торрент';
+    const shortHash = t.infoHash ? t.infoHash.substring(0, 8) : '????';
+
     return {
       infoHash: t.infoHash,
-      name: hasMetadata ? t.name : `Загрузка метаданных... (${t.infoHash.substring(0, 8)})`,
-      displayName: hasMetadata ? t.name : `Загрузка метаданных... (${t.infoHash.substring(0, 8)})`,
-      progress: Math.round(t.progress * 100),
+      name: hasMetadata ? torrentName : `Загрузка метаданных... (${shortHash})`,
+      displayName: hasMetadata ? torrentName : `Загрузка метаданных... (${shortHash})`,
+      progress: Math.round((t.progress || 0) * 100),
       downloaded: t.downloaded || 0,
       length: t.length || 0,
       downloadSpeed: t.downloadSpeed || 0,
@@ -125,7 +124,7 @@ class TorrentController {
       numPeers: numPeers,
       numSeeds: numSeeds,
       numLeeches: numLeeches,
-      paused: t.paused,
+      paused: t.paused || false,
       files: serializedFiles,
       hasMetadata: hasMetadata
     };
@@ -186,7 +185,10 @@ class TorrentController {
 
   wireTorrent(torrent) {
     const emitUpdate = () => {
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
     };
 
     // Событие при добавлении торрента
@@ -211,7 +213,10 @@ class TorrentController {
         console.log(`[DHT] ${torrent.name}: Включен`);
       }
       
-      this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:add', serialized);
+      }
     });
 
     // События прогресса
@@ -242,7 +247,10 @@ class TorrentController {
       }
       
       // Принудительно отправляем событие обновления
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
     });
     
     // Событие готовности торрента
@@ -269,7 +277,10 @@ class TorrentController {
       }
       
       // Принудительно отправляем событие обновления
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
     });
     
     // Событие завершения загрузки
@@ -447,7 +458,7 @@ class TorrentController {
       
       res.json({
         success: true,
-        items: client.torrents.map(t => this.serializeTorrent(t))
+        items: client.torrents.map(t => this.serializeTorrent(t)).filter(item => item !== null)
       });
     } catch (error) {
       console.error('[List Error]:', error);
@@ -494,7 +505,10 @@ class TorrentController {
         }
 
         // Отправляем событие добавления
-        this.io && this.io.emit('torrent:add', this.serializeTorrent(added));
+        const serialized = this.serializeTorrent(added);
+        if (serialized) {
+          this.io && this.io.emit('torrent:add', serialized);
+        }
       });
 
       // Если торрент уже добавлен (например, если это повторное добавление)
@@ -519,7 +533,10 @@ class TorrentController {
         }
 
         // Отправляем событие добавления
-        this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
+        const serialized = this.serializeTorrent(torrent);
+        if (serialized) {
+          this.io && this.io.emit('torrent:add', serialized);
+        }
       }
 
       return res.json({ success: true, infoHash: torrent.infoHash });
@@ -562,7 +579,10 @@ class TorrentController {
         }
 
         // Отправляем событие добавления
-        this.io && this.io.emit('torrent:add', this.serializeTorrent(added));
+        const serialized = this.serializeTorrent(added);
+        if (serialized) {
+          this.io && this.io.emit('torrent:add', serialized);
+        }
       });
 
       // Если торрент уже добавлен
@@ -587,7 +607,10 @@ class TorrentController {
         }
 
         // Отправляем событие добавления
-        this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
+        const serialized = this.serializeTorrent(torrent);
+        if (serialized) {
+          this.io && this.io.emit('torrent:add', serialized);
+        }
       }
 
       return res.json({ success: true, infoHash: torrent.infoHash });
@@ -785,7 +808,10 @@ class TorrentController {
       }
 
       // Отправляем обновление
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
 
       res.json({ success: true, msg: 'Торрент перезапущен' });
     } catch (e) {
@@ -805,7 +831,7 @@ class TorrentController {
         return res.json({ success: false, msg: 'Торрент не найден' });
       }
 
-      console.log(`[Принудительное обновление статистики] ${torrent.name || torrent.infoHash}`);
+      console.log(`[Обновление статистики] ${torrent.name || torrent.infoHash}`);
 
       // Принудительно обновляем трекер
       if (torrent.tracker) {
@@ -817,37 +843,19 @@ class TorrentController {
         }
       }
 
-      // Принудительно обновляем DHT
-      if (torrent.dht) {
-        console.log(`[DHT обновлен] ${torrent.name}`);
-      }
-
-      // Принудительно обновляем локальное peer discovery
-      if (torrent.lpd) {
-        console.log(`[LPD обновлен] ${torrent.name}`);
-      }
-
-      // Принудительно запускаем торрент
-      if (torrent.paused) {
-        torrent.resume();
-      }
-
-      // Принудительно выбираем все файлы для загрузки
-      if (torrent.files && torrent.files.length > 0) {
-        torrent.files.forEach(file => {
-          if (!file.selected) {
-            file.select();
-          }
+      // Принудительно обновляем статистику
+      if (torrent.announce && torrent.announce.length > 0) {
+        console.log(`[Обновление трекеров] ${torrent.name}: ${torrent.announce.length} трекеров`);
+        torrent.announce.forEach((tracker, index) => {
+          console.log(`[Трекер ${index}] ${tracker}`);
         });
       }
 
-      // Принудительно выбираем все кусочки для загрузки
-      if (torrent.pieces && torrent.pieces.length > 0) {
-        torrent.select(0, torrent.pieces.length - 1, false);
+      // Отправляем обновление
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
       }
-
-      // Отправляем обновление с правильной статистикой
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
 
       res.json({ success: true, msg: 'Статистика обновлена' });
     } catch (e) {
@@ -856,7 +864,7 @@ class TorrentController {
     }
   }
 
-  // Метод для принудительного переподключения к трекерам
+  // Метод для принудительного переподключения
   forceReconnect = async (req, res) => {
     try {
       const { infoHash } = req.params;
@@ -884,6 +892,16 @@ class TorrentController {
         torrent.announce.forEach((tracker, index) => {
           console.log(`[Трекер ${index}] ${tracker}`);
         });
+        
+        // Принудительно обновляем трекер
+        if (torrent.tracker) {
+          try {
+            torrent.tracker.announce();
+            console.log(`[Трекер обновлен] ${torrent.name}`);
+          } catch (e) {
+            console.log(`[Ошибка трекера] ${torrent.name}:`, e.message);
+          }
+        }
       }
 
       // Принудительно подключаемся к DHT
@@ -911,7 +929,10 @@ class TorrentController {
       }
 
       // Отправляем обновление
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
 
       res.json({ success: true, msg: 'Принудительное переподключение выполнено' });
     } catch (e) {
@@ -920,7 +941,7 @@ class TorrentController {
     }
   }
 
-  // Метод для принудительного подключения к трекерам и пирам
+  // Метод для принудительного подключения
   forceConnect = async (req, res) => {
     try {
       const { infoHash } = req.params;
@@ -945,8 +966,15 @@ class TorrentController {
           console.log(`[Трекер ${index}] ${tracker}`);
         });
         
-        // Принудительно обновляем трекеры
-        torrent.tracker && torrent.tracker.announce();
+        // Принудительно обновляем трекер
+        if (torrent.tracker) {
+          try {
+            torrent.tracker.announce();
+            console.log(`[Трекер обновлен] ${torrent.name}`);
+          } catch (e) {
+            console.log(`[Ошибка трекера] ${torrent.name}:`, e.message);
+          }
+        }
       }
 
       // Принудительно подключаемся к DHT
@@ -974,9 +1002,12 @@ class TorrentController {
       }
 
       // Отправляем обновление
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
 
-      res.json({ success: true, msg: 'Принудительное подключение запущено' });
+      res.json({ success: true, msg: 'Принудительное подключение выполнено' });
     } catch (e) {
       console.error('Ошибка принудительного подключения:', e);
       res.json({ success: false, msg: e.message });
@@ -1045,7 +1076,10 @@ class TorrentController {
       torrent.resume();
 
       // Отправляем обновление
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
 
       res.json({ success: true, msg: 'Принудительная загрузка метаданных запущена' });
     } catch (e) {
@@ -1054,7 +1088,7 @@ class TorrentController {
     }
   }
 
-  // Метод для принудительного обновления трекеров
+  // Метод для обновления трекеров
   updateTrackers = async (req, res) => {
     try {
       const { infoHash } = req.params;
@@ -1067,37 +1101,29 @@ class TorrentController {
 
       console.log(`[Обновление трекеров] ${torrent.name || torrent.infoHash}`);
 
-      // Принудительно обновляем трекеры
+      // Принудительно обновляем трекер
+      if (torrent.tracker) {
+        try {
+          torrent.tracker.announce();
+          console.log(`[Трекер обновлен] ${torrent.name}`);
+        } catch (e) {
+          console.log(`[Ошибка трекера] ${torrent.name}:`, e.message);
+        }
+      }
+
+      // Принудительно обновляем все трекеры
       if (torrent.announce && torrent.announce.length > 0) {
-        console.log(`[Трекеры] ${torrent.name}: ${torrent.announce.length} трекеров`);
+        console.log(`[Обновление трекеров] ${torrent.name}: ${torrent.announce.length} трекеров`);
         torrent.announce.forEach((tracker, index) => {
           console.log(`[Трекер ${index}] ${tracker}`);
         });
-        
-        // Принудительно запускаем торрент
-        if (torrent.paused) {
-          torrent.resume();
-        }
-        
-        // Принудительно выбираем все файлы для загрузки
-        if (torrent.files && torrent.files.length > 0) {
-          torrent.files.forEach(file => {
-            if (!file.selected) {
-              file.select();
-            }
-          });
-        }
-        
-        // Принудительно выбираем все кусочки для загрузки
-        if (torrent.pieces && torrent.pieces.length > 0) {
-          torrent.select(0, torrent.pieces.length - 1, false);
-        }
-      } else {
-        console.log(`[Нет трекеров] ${torrent.name}`);
       }
 
       // Отправляем обновление
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
 
       res.json({ success: true, msg: 'Трекеры обновлены' });
     } catch (e) {
@@ -1246,7 +1272,10 @@ class TorrentController {
       this.pausedTorrents.delete(infoHash);
 
       // Отправляем обновление
-      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+      const serialized = this.serializeTorrent(torrent);
+      if (serialized) {
+        this.io && this.io.emit('torrent:update', serialized);
+      }
 
       res.json({ success: true, msg: 'Торрент принудительно запущен' });
     } catch (e) {
@@ -1282,7 +1311,10 @@ class TorrentController {
 
       const torrent = client.add(source.data, opts, added => {
         this.wireTorrent(added);
-        this.io && this.io.emit('torrent:update', this.serializeTorrent(added));
+        const serialized = this.serializeTorrent(added);
+        if (serialized) {
+          this.io && this.io.emit('torrent:update', serialized);
+        }
         res.json({ success: true });
       });
 
