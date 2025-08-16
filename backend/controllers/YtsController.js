@@ -1,5 +1,4 @@
 const axios = require('axios');
-const cheerio = require('cheerio');
 const Settings = require('../models/SettingsModel');
 const https = require('https');
 
@@ -10,25 +9,66 @@ class YtsController {
       timeout: 10000
     });
     this.movieCache = new Map(); // Кэш для найденных фильмов
+    this.baseURL = 'https://api.kinopoisk.dev';
   }
 
-  // Поиск фильмов через парсинг Kinopoisk
+  // Получение API ключа Kinopoisk
+  getApiKey() {
+    const settings = Settings.readConfig();
+    return settings.kinopoiskApiKey || process.env.KINOPOISK_API_KEY || 'N6SXSYN-P1PM36E-Q6Y1NK4-GBFNPK7';
+  }
+
+  // Поиск фильмов через Kinopoisk API
   async search(query, page = 1) {
     console.log(`[KINOPOISK] Поиск: "${query}" (страница ${page})`);
     
     try {
-      // Поиск через парсинг Kinopoisk
-      const searchResult = await this.searchKinopoiskWeb(query);
-      
-      if (searchResult) {
-        console.log(`[KINOPOISK] Найден фильм: ${searchResult.title}`);
+      const apiKey = this.getApiKey();
+      if (!apiKey) {
+        console.log('[KINOPOISK] API ключ не настроен');
+        return [];
+      }
+
+      // Поиск фильмов через официальный API
+      const searchURL = `${this.baseURL}/v1.4/movie/search`;
+      const params = {
+        page: page,
+        limit: 10,
+        query: query
+      };
+
+      console.log(`[KINOPOISK] Запрос к: ${searchURL}`);
+      console.log(`[KINOPOISK] Параметры:`, params);
+      console.log(`[KINOPOISK] API ключ: ${apiKey.substring(0, 10)}...`);
+
+      const response = await axios.get(searchURL, {
+        params: params,
+        headers: {
+          'X-API-KEY': apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
+      });
+
+      console.log(`[KINOPOISK] Ответ получен, статус: ${response.status}`);
+
+      if (response.data && response.data.docs && response.data.docs.length > 0) {
+        const films = response.data.docs;
+        console.log(`[KINOPOISK] Найдено ${films.length} фильмов`);
         
-        // Сохраняем в кэше
-        const movieId = `kinopoisk_${Date.now()}`;
-        this.movieCache.set(movieId, searchResult);
+        // Получаем детали первого найденного фильма
+        const film = films[0];
+        const details = await this.getFilmDetails(film.id);
         
-        // Форматируем результат
-        return this.formatKinopoiskResult(searchResult, movieId);
+        if (details) {
+          // Сохраняем в кэше
+          const movieId = `kinopoisk_${film.id}`;
+          this.movieCache.set(movieId, details);
+          
+          // Форматируем результат
+          return this.formatKinopoiskResult(details);
+        }
       }
 
       console.log(`[KINOPOISK] Фильм не найден для "${query}"`);
@@ -36,72 +76,48 @@ class YtsController {
       
     } catch (error) {
       console.log(`[KINOPOISK] Ошибка поиска:`, error.message);
+      if (error.response) {
+        console.log(`[KINOPOISK] Статус ответа: ${error.response.status}`);
+        console.log(`[KINOPOISK] Данные ответа:`, error.response.data);
+      }
       return [];
     }
   }
 
-  // Парсинг Kinopoisk
-  async searchKinopoiskWeb(query) {
+  // Получение детальной информации о фильме
+  async getFilmDetails(filmId) {
     try {
-      console.log(`[KINOPOISK] Парсинг Kinopoisk для: "${query}"`);
+      const apiKey = this.getApiKey();
+      const detailsURL = `${this.baseURL}/v1.4/movie/${filmId}`;
       
-      const searchURL = 'https://www.kinopoisk.ru/index.php';
-      const params = {
-        kp_query: query,
-        what: ''
-      };
-
-      const response = await axios.get(searchURL, {
-        params: params,
+      const response = await axios.get(detailsURL, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
-          'Accept-Encoding': 'gzip, deflate',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1'
+          'X-API-KEY': apiKey,
+          'Content-Type': 'application/json'
         },
         timeout: 15000,
         httpsAgent: this.httpsAgent
       });
 
-      const $ = cheerio.load(response.data);
-      
-      // Ищем первый найденный фильм
-      const movieElement = $('.search_results .element').first();
-      
-      if (movieElement.length > 0) {
-        const title = movieElement.find('.name a').text().trim();
-        const year = movieElement.find('.year').text().trim();
-        const rating = movieElement.find('.rating').text().trim();
-        const posterUrl = movieElement.find('.pic img').attr('src') || '';
-        const description = movieElement.find('.descr').text().trim();
-        
-        return {
-          title: title,
-          year: parseInt(year) || null,
-          rating: parseFloat(rating) || null,
-          posterUrl: posterUrl,
-          description: description,
-          source: 'kinopoisk_web'
-        };
+      if (response.data) {
+        return response.data;
       }
       
       return null;
     } catch (error) {
-      console.log(`[KINOPOISK] Ошибка парсинга:`, error.message);
+      console.error(`[KINOPOISK] Ошибка получения деталей:`, error.message);
       return null;
     }
   }
 
   // Форматирование результата Kinopoisk
-  formatKinopoiskResult(film, movieId) {
+  formatKinopoiskResult(film) {
     return [{
-      id: movieId,
-      movieId: movieId,
-      title: `${film.title} (${film.year || 'N/A'})`,
+      id: `kinopoisk_${film.id}`,
+      movieId: `kinopoisk_${film.id}`,
+      title: `${film.name || film.alternativeName || film.enName} (${film.year || 'N/A'})`,
       quality: 'Unknown',
-      type: 'movie',
+      type: film.isSeries ? 'series' : 'movie',
       size: 'Unknown',
       seeds: 0,
       leeches: 0,
@@ -109,20 +125,24 @@ class YtsController {
       hash: '', // Нет торрентов
       torrentUrl: '', // Нет торрентов
       magnet: '',
-      poster: film.posterUrl || '',
+      poster: film.poster?.url || '',
       year: film.year,
-      rating: film.rating,
+      rating: film.rating?.kp || film.rating?.imdb,
       overview: film.description || '',
-      director: '',
-      cast: [],
-      genres: [],
-      runtime: null,
-      source: film.source,
-      is_russian: true,
-      original_title: film.title,
-      countries: [],
-      ratingKinopoisk: film.rating,
-      ratingImdb: null
+      director: film.persons?.find(p => p.profession === 'режиссеры')?.name || '',
+      cast: film.persons?.filter(p => p.profession === 'актеры').slice(0, 10).map(p => p.name) || [],
+      genres: film.genres?.map(g => g.name) || [],
+      runtime: film.movieLength,
+      source: 'kinopoisk',
+      is_russian: film.countries?.some(c => c.name === 'Россия') || false,
+      original_title: film.alternativeName || film.enName || film.name,
+      countries: film.countries?.map(c => c.name) || [],
+      ratingKinopoisk: film.rating?.kp,
+      ratingImdb: film.rating?.imdb,
+      ageRating: film.ageRating,
+      budget: film.budget,
+      fees: film.fees,
+      premiere: film.premiere
     }];
   }
 
@@ -137,25 +157,29 @@ class YtsController {
         
         if (cachedMovie) {
           return {
-            id: movieId,
-            title: cachedMovie.title,
+            id: cachedMovie.id,
+            title: cachedMovie.name || cachedMovie.alternativeName || cachedMovie.enName,
             year: cachedMovie.year,
-            rating: cachedMovie.rating,
-            runtime: null,
-            genres: [],
+            rating: cachedMovie.rating?.kp || cachedMovie.rating?.imdb,
+            runtime: cachedMovie.movieLength,
+            genres: cachedMovie.genres?.map(g => g.name) || [],
             description: cachedMovie.description || '',
-            poster: cachedMovie.posterUrl || '',
-            background: '',
-            imdbCode: '',
-            cast: [],
-            director: '',
-            source: cachedMovie.source,
-            is_russian: true,
+            poster: cachedMovie.poster?.url || '',
+            background: cachedMovie.backdrop?.url || '',
+            imdbCode: cachedMovie.externalId?.imdb || '',
+            cast: cachedMovie.persons?.filter(p => p.profession === 'актеры').slice(0, 12).map(p => p.name) || [],
+            director: cachedMovie.persons?.find(p => p.profession === 'режиссеры')?.name || '',
+            source: 'kinopoisk',
+            is_russian: cachedMovie.countries?.some(c => c.name === 'Россия') || false,
             overview: cachedMovie.description,
-            original_title: cachedMovie.title,
-            countries: ['Россия'],
-            ratingKinopoisk: cachedMovie.rating,
-            ratingImdb: null,
+            original_title: cachedMovie.alternativeName || cachedMovie.enName || cachedMovie.name,
+            countries: cachedMovie.countries?.map(c => c.name) || [],
+            ratingKinopoisk: cachedMovie.rating?.kp,
+            ratingImdb: cachedMovie.rating?.imdb,
+            ageRating: cachedMovie.ageRating,
+            budget: cachedMovie.budget,
+            fees: cachedMovie.fees,
+            premiere: cachedMovie.premiere,
             torrents: [] // Нет торрентов
           };
         }
@@ -176,9 +200,9 @@ class YtsController {
   // Статистика
   getStats() {
     return {
-      name: 'Kinopoisk Web Search',
-      description: 'Поиск фильмов через парсинг Kinopoisk',
-      sources: ['kinopoisk_web']
+      name: 'Kinopoisk API Search',
+      description: 'Поиск фильмов через официальный Kinopoisk API',
+      sources: ['kinopoisk']
     };
   }
 

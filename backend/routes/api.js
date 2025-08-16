@@ -194,8 +194,8 @@ router.post('/kinopoisk/test', adminOnly, async (req, res) => {
     }
 
     // Тестируем подключение к Kinopoisk API
-    const testURL = 'https://kinopoiskapiunofficial.tech/api/v2.1/films/search-by-keyword';
-    const params = { keyword: 'тест', page: 1 };
+    const testURL = 'https://api.kinopoisk.dev/v1.4/movie/search';
+    const params = { page: 1, limit: 1, query: 'тест' };
 
     const response = await axios.get(testURL, {
       params: params,

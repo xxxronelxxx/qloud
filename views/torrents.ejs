@@ -345,20 +345,24 @@
       const body = document.getElementById('ytsDetailsBody');
       document.getElementById('ytsDetailsTitle').textContent = `${m.title} (${m.year})`;
       
-      // Определяем, является ли это русским фильмом
-      const isRussian = movieId.startsWith('russian_');
+      // Определяем, является ли это Kinopoisk фильмом
+      const isKinopoisk = movieId.startsWith('kinopoisk_');
       
-      if (isRussian) {
-        // Для русских фильмов
+      if (isKinopoisk) {
+        // Для Kinopoisk фильмов
         body.innerHTML = `
           <div class="d-flex gap-3">
             <img src="${m.poster || ''}" style="width:160px;height:240px;object-fit:cover;border-radius:10px" onerror="this.style.display='none'"/>
             <div>
-              <div class="mb-2"><strong>Рейтинг:</strong> ${m.rating ?? 'Нет данных'}</div>
+              <div class="mb-2"><strong>Рейтинг Кинопоиск:</strong> ${m.ratingKinopoisk ?? 'Нет данных'}</div>
+              <div class="mb-2"><strong>Рейтинг IMDb:</strong> ${m.ratingImdb ?? 'Нет данных'}</div>
               <div class="mb-2"><strong>Жанры:</strong> ${(m.genres||[]).join(', ') || 'Не указаны'}</div>
               <div class="mb-2"><strong>Длительность:</strong> ${m.runtime || 'Не указана'} мин</div>
               <div class="mb-2"><strong>Режиссер:</strong> ${m.director || 'Не указан'}</div>
-              <div class="mb-2"><strong>Источник:</strong> ${m.source || 'Russian'}</div>
+              <div class="mb-2"><strong>Страны:</strong> ${(m.countries||[]).join(', ') || 'Не указаны'}</div>
+              <div class="mb-2"><strong>IMDb ID:</strong> ${m.imdbCode || 'Не указан'}</div>
+              <div class="mb-2"><strong>Возрастной рейтинг:</strong> ${m.ageRating ? m.ageRating + '+' : 'Не указан'}</div>
+              <div class="mb-2"><strong>Тип:</strong> ${m.type === 'series' ? 'Сериал' : 'Фильм'}</div>
             </div>
           </div>
           <div class="mt-3">${m.overview || m.description || 'Описание недоступно'}</div>
@@ -367,7 +371,7 @@
             ${(m.cast||[]).slice(0,12).map(c=>`<span class="badge text-bg-secondary">${c}</span>`).join('') || '<span class="text-muted">Актеры не указаны</span>'}
           </div>
           <div class="mt-3 alert alert-info">
-            <strong>Информация:</strong> Это русский фильм. Торренты не интегрированы в систему.
+            <strong>Информация:</strong> Данные получены через официальный Kinopoisk API. Торренты не интегрированы в систему.
           </div>
         `;
       } else {
