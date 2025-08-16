@@ -1,297 +1,474 @@
 const axios = require('axios');
-const parseTorrent = require('parse-torrent');
+const cheerio = require('cheerio');
 const Settings = require('../models/SettingsModel');
 const https = require('https');
 
 class YtsController {
   constructor() {
-    this.baseApi = 'https://yts.mx/api/v2';
-    const cfg = Settings.readConfig();
-    this.tmdbApiKey = (cfg && cfg.tmdbApiKey) || process.env.TMDB_API_KEY || '';
-    this.httpsAgent = new https.Agent({ keepAlive: false });
+    this.httpsAgent = new https.Agent({
+      rejectUnauthorized: false,
+      timeout: 10000
+    });
+    this.movieCache = new Map(); // Кэш для найденных фильмов
+    this.baseURL = 'https://api.kinopoisk.dev';
   }
 
-  hasNonAscii(text) {
-    return /[^\x00-\x7F]/.test(text || '');
+  // Получение API ключа Kinopoisk
+  getApiKey() {
+    const settings = Settings.readConfig();
+    return settings.kinopoiskApiKey || process.env.KINOPOISK_API_KEY || 'N6SXSYN-P1PM36E-Q6Y1NK4-GBFNPK7';
   }
 
-  translitRuToEn(text) {
-    if (!text) return '';
+  // Поиск фильмов через Kinopoisk API
+  async search(query, page = 1) {
+    console.log(`[KINOPOISK] Поиск: "${query}" (страница ${page})`);
     
-    // Специальные случаи для популярных фильмов
-    const specialCases = {
-      'матрица': 'matrix',
-      'матрица': 'matrix',
-      'терминатор': 'terminator',
-      'терминатор': 'terminator',
-      'аватар': 'avatar',
-      'аватар': 'avatar',
-      'титаник': 'titanic',
-      'титаник': 'titanic',
-      'форрест гамп': 'forrest gump',
-      'форрест гамп': 'forrest gump',
-      'список шиндлера': 'schindler list',
-      'список шиндлера': 'schindler list',
-      'властелин колец': 'lord of the rings',
-      'властелин колец': 'lord of the rings',
-      'гарри поттер': 'harry potter',
-      'гарри поттер': 'harry potter',
-      'звездные войны': 'star wars',
-      'звездные войны': 'star wars',
-      'в поисках немо': 'finding nemo',
-      'в поисках немо': 'finding nemo',
-      'король лев': 'lion king',
-      'король лев': 'lion king'
-    };
-    
-    const lowerText = text.toLowerCase();
-    if (specialCases[lowerText]) {
-      return specialCases[lowerText];
-    }
-    
-    const map = {
-      'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'yo','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
-      'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'Yo','Ж':'Zh','З':'Z','И':'I','Й':'Y','К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F','Х':'Kh','Ц':'Ts','Ч':'Ch','Ш':'Sh','Щ':'Shch','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'Yu','Я':'Ya'
-    };
-    return Array.from(text).map(ch => map[ch] ?? ch).join('');
-  }
-
-  getPopularEnglishNames(russianQuery) {
-    const lowerQuery = russianQuery.toLowerCase();
-    const popularMap = {
-      'матрица': ['matrix', 'the matrix'],
-      'терминатор': ['terminator', 'the terminator'],
-      'аватар': ['avatar'],
-      'титаник': ['titanic'],
-      'форрест гамп': ['forrest gump'],
-      'список шиндлера': ['schindler list', 'schindlers list'],
-      'властелин колец': ['lord of the rings', 'the lord of the rings'],
-      'гарри поттер': ['harry potter'],
-      'звездные войны': ['star wars'],
-      'в поисках немо': ['finding nemo'],
-      'король лев': ['lion king', 'the lion king'],
-      'пираты карибского моря': ['pirates of the caribbean'],
-      'назад в будущее': ['back to the future'],
-      'индиана джонс': ['indiana jones'],
-      'человек паук': ['spider man', 'spiderman'],
-      'железный человек': ['iron man'],
-      'мстители': ['avengers'],
-      'капитан америка': ['captain america'],
-      'тор': ['thor'],
-      'халк': ['hulk'],
-      'черная вдова': ['black widow'],
-      'доктор стрэндж': ['doctor strange'],
-      'страж галактики': ['guardians of the galaxy'],
-      'человек муравей': ['ant man', 'antman'],
-      'капитан марвел': ['captain marvel'],
-      'черная пантера': ['black panther'],
-      'вдова': ['black widow'],
-      'муравей': ['ant man', 'antman'],
-      'марвел': ['captain marvel'],
-      'пантера': ['black panther']
-    };
-    
-    return popularMap[lowerQuery] || [];
-  }
-
-  async tmdbResolveQuery(query) {
-    if (!this.tmdbApiKey) return null;
     try {
-      const url = `https://api.themoviedb.org/3/search/movie?api_key=${this.tmdbApiKey}&language=ru-RU&query=${encodeURIComponent(query)}`;
-      const { data } = await axios.get(url, { timeout: 12000, proxy: false, httpsAgent: this.httpsAgent });
-      const results = (data && data.results) || [];
-      if (!results.length) return null;
-      const best = results[0];
-      // Получим внешние ID (IMDB)
-      let imdb_id = '';
-      try {
-        const ext = await axios.get(`https://api.themoviedb.org/3/movie/${best.id}/external_ids?api_key=${this.tmdbApiKey}`, { timeout: 12000, proxy: false, httpsAgent: this.httpsAgent });
-        imdb_id = (ext && ext.data && ext.data.imdb_id) || '';
-      } catch(_) {}
-      return {
-        original_title: best.original_title || best.title,
-        year: (best.release_date || '').slice(0,4),
-        imdb_id
+      const apiKey = this.getApiKey();
+      if (!apiKey) {
+        console.log('[KINOPOISK] API ключ не настроен');
+        return [];
+      }
+
+      // Поиск фильмов через официальный API
+      const searchURL = `${this.baseURL}/v1.4/movie/search`;
+      const params = {
+        page: page,
+        limit: 10,
+        query: query
       };
-    } catch (_) {
+
+      console.log(`[KINOPOISK] Запрос к: ${searchURL}`);
+      console.log(`[KINOPOISK] Параметры:`, params);
+      console.log(`[KINOPOISK] API ключ: ${apiKey.substring(0, 10)}...`);
+
+      const response = await axios.get(searchURL, {
+        params: params,
+        headers: {
+          'X-API-KEY': apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
+      });
+
+      console.log(`[KINOPOISK] Ответ получен, статус: ${response.status}`);
+
+      if (response.data && response.data.docs && response.data.docs.length > 0) {
+        const films = response.data.docs;
+        console.log(`[KINOPOISK] Найдено ${films.length} фильмов`);
+        
+        // Получаем детали первого найденного фильма
+        const film = films[0];
+        const details = await this.getFilmDetails(film.id);
+        
+        if (details) {
+          // Сохраняем в кэше
+          const movieId = `kinopoisk_${film.id}`;
+          this.movieCache.set(movieId, details);
+          
+          // Ищем торренты для фильма
+          const torrents = await this.searchTorrents(details);
+          
+          // Форматируем результат
+          return this.formatKinopoiskResult(details, torrents);
+        }
+      }
+
+      console.log(`[KINOPOISK] Фильм не найден для "${query}"`);
+      return [];
+      
+    } catch (error) {
+      console.log(`[KINOPOISK] Ошибка поиска:`, error.message);
+      if (error.response) {
+        console.log(`[KINOPOISK] Статус ответа: ${error.response.status}`);
+        console.log(`[KINOPOISK] Данные ответа:`, error.response.data);
+      }
+      return [];
+    }
+  }
+
+  // Получение детальной информации о фильме
+  async getFilmDetails(filmId) {
+    try {
+      const apiKey = this.getApiKey();
+      const detailsURL = `${this.baseURL}/v1.4/movie/${filmId}`;
+      
+      const response = await axios.get(detailsURL, {
+        headers: {
+          'X-API-KEY': apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
+      });
+
+      if (response.data) {
+        return response.data;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error(`[KINOPOISK] Ошибка получения деталей:`, error.message);
       return null;
     }
   }
 
-  normalizeMovies(movies) {
-    const results = [];
-    for (const m of movies) {
-      const title = `${m.title} (${m.year})`;
-      const torrents = m.torrents || [];
-      for (const t of torrents) {
-        results.push({
-          id: `${m.id}_${t.hash}`,
-          movieId: m.id,
-          title: `${title} [${t.quality} ${t.type}]`,
-          quality: t.quality,
-          type: t.type,
-          size: t.size,
-          seeds: t.seeds,
-          leeches: t.peers,
-          date: t.date_uploaded,
-          hash: t.hash,
-          torrentUrl: t.url, // ссылка на .torrent
-          magnet: this.buildMagnet(t.hash, `${m.title}.${t.quality}`),
-          poster: m.medium_cover_image || m.small_cover_image || '',
-          year: m.year,
-          rating: m.rating
-        });
-      }
-    }
-    return results;
+  // Форматирование результата Kinopoisk
+  formatKinopoiskResult(film, torrents) {
+    // Выбираем лучший торрент (с наибольшим количеством сидов)
+    const bestTorrent = torrents.length > 0 ? torrents[0] : null;
+    
+    return [{
+      id: `kinopoisk_${film.id}`,
+      movieId: `kinopoisk_${film.id}`,
+      title: `${film.name || film.alternativeName || film.enName} (${film.year || 'N/A'})`,
+      quality: bestTorrent ? 'Found' : 'Unknown',
+      type: film.isSeries ? 'series' : 'movie',
+      size: bestTorrent ? bestTorrent.size : 'Unknown',
+      seeds: bestTorrent ? bestTorrent.seeds : 0,
+      leeches: bestTorrent ? bestTorrent.leeches : 0,
+      date: film.year ? `${film.year}-01-01` : new Date().toISOString(),
+      hash: bestTorrent ? bestTorrent.link : '',
+      torrentUrl: bestTorrent ? bestTorrent.link : '',
+      magnet: bestTorrent ? bestTorrent.link : '',
+      poster: film.poster?.url || '',
+      year: film.year,
+      rating: film.rating?.kp || film.rating?.imdb,
+      overview: film.description || '',
+      director: film.persons?.find(p => p.profession === 'режиссеры')?.name || '',
+      cast: film.persons?.filter(p => p.profession === 'актеры').slice(0, 10).map(p => p.name) || [],
+      genres: film.genres?.map(g => g.name) || [],
+      runtime: film.movieLength,
+      source: 'kinopoisk',
+      is_russian: film.countries?.some(c => c.name === 'Россия') || false,
+      original_title: film.alternativeName || film.enName || film.name,
+      countries: film.countries?.map(c => c.name) || [],
+      ratingKinopoisk: film.rating?.kp,
+      ratingImdb: film.rating?.imdb,
+      ageRating: film.ageRating,
+      budget: film.budget,
+      fees: film.fees,
+      premiere: film.premiere,
+      torrents: torrents // Добавляем найденные торренты
+    }];
   }
 
-  async search(query, page = 1) {
-    console.log(`[YTS] Поиск: "${query}" (страница ${page})`);
-    
-    // обновляем ключ на случай изменения в настройках без перезапуска
+  // Получение детальной информации о фильме (для API)
+  async details(movieId) {
     try {
-      const cfg = Settings.readConfig();
-      this.tmdbApiKey = (cfg && cfg.tmdbApiKey) || process.env.TMDB_API_KEY || '';
-      console.log(`[YTS] TMDB ключ: ${this.tmdbApiKey ? 'есть' : 'нет'}`);
-    } catch (_) {}
-
-    // Прямой поиск на YTS (принудительно без прокси)
-    const url = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(query)}&page=${page}&limit=20`;
-    console.log(`[YTS] Прямой поиск: ${url}`);
-    try {
-      const { data } = await axios.get(url, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-      if (data && data.status === 'ok' && data.data) {
-        const movies = data.data.movies || [];
-        console.log(`[YTS] Прямой поиск: найдено ${movies.length} фильмов`);
-        if (movies.length) return this.normalizeMovies(movies);
-      }
-    } catch (error) {
-      console.log(`[YTS] Ошибка прямого поиска:`, error.message);
-    }
-
-    // Если кириллица — пробуем транслит и ещё раз на YTS
-    if (this.hasNonAscii(query)) {
-      const tr = this.translitRuToEn(query);
-      console.log(`[YTS] Транслитерация "${query}" → "${tr}"`);
-      if (tr && tr !== query) {
-        const urlTr = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(tr)}&page=${page}&limit=20`;
-        console.log(`[YTS] Поиск по транслиту: ${urlTr}`);
-        try {
-          const { data: dataTr } = await axios.get(urlTr, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-          if (dataTr && dataTr.status === 'ok' && dataTr.data) {
-            const moviesTr = dataTr.data.movies || [];
-            console.log(`[YTS] Поиск по транслиту: найдено ${moviesTr.length} фильмов`);
-            if (moviesTr.length) return this.normalizeMovies(moviesTr);
+      console.log(`[KINOPOISK] Получение деталей фильма: ${movieId}`);
+      
+      // Если это Kinopoisk фильм, получаем детали из кэша
+      if (movieId.startsWith('kinopoisk_')) {
+        const cachedMovie = this.movieCache.get(movieId);
+        
+        if (cachedMovie) {
+          // Ищем торренты для фильма, если их еще нет
+          let torrents = [];
+          if (!cachedMovie.torrents) {
+            torrents = await this.searchTorrents(cachedMovie);
+            // Обновляем кэш с торрентами
+            cachedMovie.torrents = torrents;
+            this.movieCache.set(movieId, cachedMovie);
+          } else {
+            torrents = cachedMovie.torrents;
           }
-        } catch (error) {
-          console.log(`[YTS] Ошибка поиска по транслиту:`, error.message);
+
+          return {
+            id: cachedMovie.id,
+            title: cachedMovie.name || cachedMovie.alternativeName || cachedMovie.enName,
+            year: cachedMovie.year,
+            rating: cachedMovie.rating?.kp || cachedMovie.rating?.imdb,
+            runtime: cachedMovie.movieLength,
+            genres: cachedMovie.genres?.map(g => g.name) || [],
+            description: cachedMovie.description || '',
+            poster: cachedMovie.poster?.url || '',
+            background: cachedMovie.backdrop?.url || '',
+            imdbCode: cachedMovie.externalId?.imdb || '',
+            cast: cachedMovie.persons?.filter(p => p.profession === 'актеры').slice(0, 12).map(p => p.name) || [],
+            director: cachedMovie.persons?.find(p => p.profession === 'режиссеры')?.name || '',
+            source: 'kinopoisk',
+            is_russian: cachedMovie.countries?.some(c => c.name === 'Россия') || false,
+            overview: cachedMovie.description,
+            original_title: cachedMovie.alternativeName || cachedMovie.enName || cachedMovie.name,
+            countries: cachedMovie.countries?.map(c => c.name) || [],
+            ratingKinopoisk: cachedMovie.rating?.kp,
+            ratingImdb: cachedMovie.rating?.imdb,
+            ageRating: cachedMovie.ageRating,
+            budget: cachedMovie.budget,
+            fees: cachedMovie.fees,
+            premiere: cachedMovie.premiere,
+            torrents: torrents
+          };
         }
       }
       
-      // Альтернативный поиск по популярным названиям
-      const popularNames = this.getPopularEnglishNames(query);
-      for (const name of popularNames) {
-        const urlAlt = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(name)}&page=${page}&limit=20`;
-        console.log(`[YTS] Альтернативный поиск: ${urlAlt}`);
-        try {
-          const { data: dataAlt } = await axios.get(urlAlt, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-          if (dataAlt && dataAlt.status === 'ok' && dataAlt.data) {
-            const moviesAlt = dataAlt.data.movies || [];
-            console.log(`[YTS] Альтернативный поиск "${name}": найдено ${moviesAlt.length} фильмов`);
-            if (moviesAlt.length) return this.normalizeMovies(moviesAlt);
-          }
-        } catch (error) {
-          console.log(`[YTS] Ошибка альтернативного поиска "${name}":`, error.message);
-        }
-      }
+      return null;
+    } catch (error) {
+      console.error(`[KINOPOISK] Ошибка получения деталей:`, error.message);
+      return null;
     }
+  }
 
-    // Fallback через TMDB для русскоязычных запросов
-    if (this.tmdbApiKey && this.hasNonAscii(query)) {
-      console.log(`[YTS] Пробуем TMDB fallback для "${query}"`);
-      const resolved = await this.tmdbResolveQuery(query);
-      if (resolved) {
-        console.log(`[YTS] TMDB разрешил в:`, resolved);
-        // Пробуем сперва по IMDB id, затем по оригинальному названию
-        let url2 = '';
-        if (resolved.imdb_id) {
-          url2 = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(resolved.imdb_id)}&limit=20`;
-        } else {
-          url2 = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(resolved.original_title)}&limit=20`;
-        }
-        console.log(`[YTS] TMDB fallback поиск: ${url2}`);
-        try {
-          const { data: data2 } = await axios.get(url2, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-          if (data2 && data2.status === 'ok' && data2.data) {
-            const movies2 = data2.data.movies || [];
-            console.log(`[YTS] TMDB fallback: найдено ${movies2.length} фильмов`);
-            if (movies2.length) return this.normalizeMovies(movies2);
-          }
-        } catch (error) {
-          console.log(`[YTS] Ошибка TMDB fallback:`, error.message);
-        }
-      } else {
-        console.log(`[YTS] TMDB не смог разрешить запрос`);
-      }
-    }
-
-    console.log(`[YTS] Ничего не найдено для "${query}"`);
+  // Получение торрентов для фильма (заглушка)
+  async getMovieTorrents(movieId) {
     return [];
   }
 
-  buildMagnet(hash, name) {
-    const trackers = [
-      'udp://tracker.opentrackr.org:1337/announce',
-      'udp://tracker.openbittorrent.com:6969/announce',
-      'udp://opentracker.i2p.rocks:6969/announce',
-      'udp://tracker.tiny-vps.com:6969/announce',
-      'udp://tracker.internetwarriors.net:1337/announce'
-    ];
-    const tr = trackers.map(t => `&tr=${encodeURIComponent(t)}`).join('');
-    const dn = name ? `&dn=${encodeURIComponent(name)}` : '';
-    return `magnet:?xt=urn:btih:${hash}${dn}${tr}`;
-  }
-
-  async getFilesByTorrentUrl(torrentUrl) {
-    const resp = await axios.get(torrentUrl, { responseType: 'arraybuffer', timeout: 20000, proxy: false, httpsAgent: this.httpsAgent });
-    const tor = parseTorrent(Buffer.from(resp.data));
-    const files = (tor.files || []).map(f => ({
-      name: f.name,
-      path: f.path,
-      length: f.length
-    }));
-    return { name: tor.name, files };
-  }
-
-  async details(movieId) {
-    const url = `${this.baseApi}/movie_details.json?movie_id=${encodeURIComponent(movieId)}&with_images=true&with_cast=true`;
-    const { data } = await axios.get(url, { timeout: 15000, proxy: false, httpsAgent: this.httpsAgent });
-    const m = data && data.data && data.data.movie;
-    if (!m) return null;
+  // Статистика
+  getStats() {
     return {
-      id: m.id,
-      title: m.title,
-      year: m.year,
-      rating: m.rating,
-      runtime: m.runtime,
-      genres: m.genres || [],
-      description: m.description_full || m.summary || '',
-      poster: m.large_cover_image || m.medium_cover_image || m.small_cover_image || '',
-      background: m.background_image_original || m.background_image || '',
-      imdbCode: m.imdb_code || '',
-      cast: (m.cast || []).map(c => ({ name: c.name, character: c.character_name, url: c.url_small_image })),
-      torrents: (m.torrents || []).map(t => ({
-        quality: t.quality,
-        type: t.type,
-        size: t.size,
-        seeds: t.seeds,
-        peers: t.peers,
-        hash: t.hash,
-        url: t.url,
-        magnet: this.buildMagnet(t.hash, `${m.title}.${t.quality}`)
-      }))
+      name: 'Kinopoisk API Search',
+      description: 'Поиск фильмов через официальный Kinopoisk API',
+      sources: ['kinopoisk']
     };
+  }
+
+  // Создание magnet-ссылки (заглушка для совместимости)
+  buildMagnet(hash, name = '') {
+    return `magnet:?xt=urn:btih:${hash}`;
+  }
+
+  // Получение файлов по URL торрента (заглушка для совместимости)
+  async getFilesByTorrentUrl(torrentUrl) {
+    return {
+      name: 'Kinopoisk Movie',
+      files: []
+    };
+  }
+
+  // Поиск торрентов для фильма
+  async searchTorrents(film) {
+    try {
+      console.log(`[TORRENT] Поиск торрентов для: ${film.name || film.alternativeName || film.enName}`);
+      console.log(`[TORRENT] Kinopoisk ID: ${film.id}`);
+      
+      const allTorrents = [];
+
+      // Поиск по Kinopoisk ID (основной метод)
+      try {
+        console.log(`[TORRENT] Поиск по Kinopoisk ID: ${film.id}`);
+        const jacredTorrents = await this.searchJacred(film.id);
+        allTorrents.push(...jacredTorrents);
+      } catch (error) {
+        console.log(`[TORRENT] Ошибка поиска по Kinopoisk ID:`, error.message);
+      }
+
+      // Если не найдено по ID, ищем по названию
+      if (allTorrents.length === 0) {
+        console.log(`[TORRENT] Поиск по названию...`);
+        
+        // Формируем поисковые запросы, исключая null значения
+        const searchQueries = [];
+        
+        if (film.name) {
+          searchQueries.push(film.name);
+          if (film.year) {
+            searchQueries.push(`${film.name} ${film.year}`);
+          }
+        }
+        
+        if (film.alternativeName && film.alternativeName !== film.name) {
+          searchQueries.push(film.alternativeName);
+          if (film.year) {
+            searchQueries.push(`${film.alternativeName} ${film.year}`);
+          }
+        }
+        
+        if (film.enName && film.enName !== film.name && film.enName !== film.alternativeName) {
+          searchQueries.push(film.enName);
+          if (film.year) {
+            searchQueries.push(`${film.enName} ${film.year}`);
+          }
+        }
+
+        console.log(`[TORRENT] Поисковые запросы:`, searchQueries);
+
+        for (const query of searchQueries) {
+          try {
+            console.log(`[TORRENT] Поиск для запроса: "${query}"`);
+            
+            // Поиск на Jacred по названию
+            const jacredTorrents = await this.searchJacredByName(query);
+            allTorrents.push(...jacredTorrents);
+
+            // Поиск на Nyaa (для аниме)
+            if (film.genres?.some(g => g.name.toLowerCase().includes('аниме'))) {
+              const nyaaTorrents = await this.searchNyaa(query);
+              allTorrents.push(...nyaaTorrents);
+            }
+          } catch (error) {
+            console.log(`[TORRENT] Ошибка поиска для "${query}":`, error.message);
+          }
+        }
+      }
+
+      // Убираем дубликаты и сортируем по размеру
+      const uniqueTorrents = this.removeDuplicateTorrents(allTorrents);
+      console.log(`[TORRENT] Найдено ${uniqueTorrents.length} уникальных торрентов`);
+
+      return uniqueTorrents;
+    } catch (error) {
+      console.log(`[TORRENT] Ошибка поиска торрентов:`, error.message);
+      return [];
+    }
+  }
+
+  // Поиск на Jacred по Kinopoisk ID
+  async searchJacred(kinopoiskId) {
+    try {
+      console.log(`[JACRED] Поиск по Kinopoisk ID: ${kinopoiskId}`);
+      const searchURL = `https://jacred.xyz/api/v1.0/torrents?search=kp${kinopoiskId}&exact=true`;
+      console.log(`[JACRED] URL: ${searchURL}`);
+      
+      const response = await axios.get(searchURL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3'
+        },
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
+      });
+
+      console.log(`[JACRED] Ответ получен, статус: ${response.status}`);
+      console.log(`[JACRED] Размер ответа: ${JSON.stringify(response.data).length} символов`);
+
+      if (response.data && Array.isArray(response.data)) {
+        const torrents = response.data.map(item => ({
+          title: item.title || item.name || 'Unknown',
+          size: item.size || 'Unknown',
+          seeds: item.seeds || 0,
+          leeches: item.leeches || 0,
+          link: item.magnet || item.torrent || '',
+          source: 'jacred',
+          quality: item.quality || 'Unknown',
+          language: item.language || 'Unknown'
+        }));
+
+        console.log(`[JACRED] Найдено ${torrents.length} торрентов по Kinopoisk ID`);
+        torrents.forEach((torrent, index) => {
+          console.log(`[JACRED] ${index + 1}. ${torrent.title.substring(0, 50)}... (${torrent.size}, ${torrent.seeds}↑)`);
+        });
+
+        return torrents;
+      }
+
+      return [];
+    } catch (error) {
+      console.log(`[JACRED] Ошибка поиска по Kinopoisk ID:`, error.message);
+      if (error.response) {
+        console.log(`[JACRED] HTTP ошибка: ${error.response.status}`);
+        console.log(`[JACRED] Данные ответа:`, error.response.data);
+      }
+      return [];
+    }
+  }
+
+  // Поиск на Jacred по названию
+  async searchJacredByName(query) {
+    try {
+      console.log(`[JACRED] Поиск по названию: "${query}"`);
+      const searchURL = `https://jacred.xyz/api/v1.0/torrents?search=${encodeURIComponent(query)}`;
+      console.log(`[JACRED] URL: ${searchURL}`);
+      
+      const response = await axios.get(searchURL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3'
+        },
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
+      });
+
+      console.log(`[JACRED] Ответ получен, статус: ${response.status}`);
+
+      if (response.data && Array.isArray(response.data)) {
+        const torrents = response.data.map(item => ({
+          title: item.title || item.name || 'Unknown',
+          size: item.size || 'Unknown',
+          seeds: item.seeds || 0,
+          leeches: item.leeches || 0,
+          link: item.magnet || item.torrent || '',
+          source: 'jacred',
+          quality: item.quality || 'Unknown',
+          language: item.language || 'Unknown'
+        }));
+
+        console.log(`[JACRED] Найдено ${torrents.length} торрентов по названию`);
+        torrents.slice(0, 3).forEach((torrent, index) => {
+          console.log(`[JACRED] ${index + 1}. ${torrent.title.substring(0, 50)}... (${torrent.size}, ${torrent.seeds}↑)`);
+        });
+
+        return torrents;
+      }
+
+      return [];
+    } catch (error) {
+      console.log(`[JACRED] Ошибка поиска по названию:`, error.message);
+      if (error.response) {
+        console.log(`[JACRED] HTTP ошибка: ${error.response.status}`);
+      }
+      return [];
+    }
+  }
+
+  // Поиск на Nyaa
+  async searchNyaa(query) {
+    try {
+      const searchURL = 'https://nyaa.si/?f=0&c=0_0&q=' + encodeURIComponent(query);
+      
+      const response = await axios.get(searchURL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        timeout: 10000,
+        httpsAgent: this.httpsAgent
+      });
+
+      const $ = require('cheerio').load(response.data);
+      const torrents = [];
+
+      $('tbody tr').each((i, element) => {
+        const $el = $(element);
+        const title = $el.find('td').eq(1).find('a').last().text().trim();
+        const size = $el.find('td').eq(3).text().trim();
+        const seeds = parseInt($el.find('td').eq(5).text().trim()) || 0;
+        const leeches = parseInt($el.find('td').eq(6).text().trim()) || 0;
+        const link = $el.find('td').eq(1).find('a').last().attr('href');
+
+        if (title && link) {
+          torrents.push({
+            title: title,
+            size: size,
+            seeds: seeds,
+            leeches: leeches,
+            link: 'https://nyaa.si' + link,
+            source: 'nyaa'
+          });
+        }
+      });
+
+      return torrents;
+    } catch (error) {
+      console.log(`[NYAA] Ошибка поиска:`, error.message);
+      return [];
+    }
+  }
+
+  // Удаление дубликатов торрентов
+  removeDuplicateTorrents(torrents) {
+    const seen = new Set();
+    return torrents.filter(torrent => {
+      const key = `${torrent.title}_${torrent.size}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    }).sort((a, b) => b.seeds - a.seeds); // Сортировка по количеству сидов
   }
 }
 

@@ -18,6 +18,74 @@ const TMDB_IPS = [
     '52.85.151.48'
 ];
 
+// Словарь переводов имен актеров и режиссеров
+const ACTOR_TRANSLATIONS = {
+    // Популярные актеры
+    'Tom Hanks': 'Том Хэнкс',
+    'Leonardo DiCaprio': 'Леонардо ДиКаприо',
+    'Brad Pitt': 'Брэд Питт',
+    'Johnny Depp': 'Джонни Депп',
+    'Robert Downey Jr.': 'Роберт Дауни мл.',
+    'Chris Hemsworth': 'Крис Хемсворт',
+    'Scarlett Johansson': 'Скарлетт Йоханссон',
+    'Jennifer Lawrence': 'Дженнифер Лоуренс',
+    'Emma Watson': 'Эмма Уотсон',
+    'Angelina Jolie': 'Анджелина Джоли',
+    'Will Smith': 'Уилл Смит',
+    'Tom Cruise': 'Том Круз',
+    'Denzel Washington': 'Дензел Вашингтон',
+    'Morgan Freeman': 'Морган Фриман',
+    'Al Pacino': 'Аль Пачино',
+    'Robert De Niro': 'Роберт Де Ниро',
+    'Jack Nicholson': 'Джек Николсон',
+    'Meryl Streep': 'Мерил Стрип',
+    'Julia Roberts': 'Джулия Робертс',
+    'Sandra Bullock': 'Сандра Буллок',
+    
+    // Популярные режиссеры
+    'Christopher Nolan': 'Кристофер Нолан',
+    'Steven Spielberg': 'Стивен Спилберг',
+    'James Cameron': 'Джеймс Кэмерон',
+    'Quentin Tarantino': 'Квентин Тарантино',
+    'Martin Scorsese': 'Мартин Скорсезе',
+    'Ridley Scott': 'Ридли Скотт',
+    'Peter Jackson': 'Питер Джексон',
+    'Tim Burton': 'Тим Бёртон',
+    'David Fincher': 'Дэвид Финчер',
+    'Danny Boyle': 'Дэнни Бойл',
+    'Guy Ritchie': 'Гай Ричи',
+    'Zack Snyder': 'Зак Снайдер',
+    'J.J. Abrams': 'Дж.Дж. Абрамс',
+    'Michael Bay': 'Майкл Бэй',
+    'Roland Emmerich': 'Роланд Эммерих',
+    'Baz Luhrmann': 'Баз Лурманн',
+    'Sam Raimi': 'Сэм Рэйми',
+    'Gore Verbinski': 'Гор Вербински',
+    'Jon Favreau': 'Джон Фавро',
+    'Joss Whedon': 'Джосс Уидон'
+};
+
+// Функция для перевода имени на русский язык
+function translateName(name) {
+    if (!name) return name;
+    
+    // Проверяем точное совпадение
+    if (ACTOR_TRANSLATIONS[name]) {
+        return ACTOR_TRANSLATIONS[name];
+    }
+    
+    // Проверяем частичные совпадения (для случаев с разными вариантами написания)
+    for (const [english, russian] of Object.entries(ACTOR_TRANSLATIONS)) {
+        if (name.toLowerCase().includes(english.toLowerCase()) || 
+            english.toLowerCase().includes(name.toLowerCase())) {
+            return russian;
+        }
+    }
+    
+    // Если перевод не найден, возвращаем оригинальное имя
+    return name;
+}
+
 // Функция для выполнения HTTPS запросов с принудительным DNS
 async function makeHttpsRequest(url, params = {}) {
     try {
@@ -188,7 +256,9 @@ class TMDBService {
                 console.log(`🎬 Найден фильм: ${movie.title} (${movie.release_date})`);
                 
                 // Получаем детальную информацию о фильме
-                const details = await this.getMovieDetails(movie.id);
+                // Передаем язык, на котором был найден фильм
+                const searchLanguage = params.language;
+                const details = await this.getMovieDetails(movie.id, searchLanguage);
                 
                 if (details) {
                     // Кэшируем результат
@@ -216,7 +286,7 @@ class TMDBService {
     }
 
     // Получение детальной информации о фильме
-    async getMovieDetails(movieId) {
+    async getMovieDetails(movieId, searchLanguage = 'ru-RU') {
         try {
             const apiKey = this.getApiKey();
             if (!apiKey) {
@@ -224,9 +294,9 @@ class TMDBService {
                 return null;
             }
 
-            console.log(`📋 Получение деталей фильма ID: ${movieId}`);
+            console.log(`📋 Получение деталей фильма ID: ${movieId} на языке: ${searchLanguage}`);
 
-            const cacheKey = `movie_details_${movieId}`;
+            const cacheKey = `movie_details_${movieId}_${searchLanguage}`;
             const cached = this.cache.get(cacheKey);
             
             if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
@@ -234,19 +304,31 @@ class TMDBService {
                 return cached.data;
             }
 
-            const params = {
+            // Сначала пробуем получить детали на русском языке
+            let params = {
                 api_key: apiKey,
                 language: 'ru-RU',
                 append_to_response: 'credits,genres'
             };
 
-            console.log(`🌐 Запрос деталей: ${this.baseURL}/movie/${movieId}`);
+            console.log(`🌐 Запрос деталей на русском: ${this.baseURL}/movie/${movieId}`);
 
-            const response = await makeHttpsRequest(`${this.baseURL}/movie/${movieId}`, params);
+            let response = await makeHttpsRequest(`${this.baseURL}/movie/${movieId}`, params);
             
             console.log(`✅ Детали получены, статус: ${response.status}`);
             
-            const movie = response.data;
+            let movie = response.data;
+
+            // Если русская локализация недоступна (overview пустой или на английском), 
+            // пробуем получить на языке поиска
+            if (!movie.overview || movie.overview.length < 10 || 
+                (searchLanguage === 'en-US' && !movie.overview.match(/[а-яё]/i))) {
+                console.log('Русская локализация недоступна, пробуем на языке поиска...');
+                
+                params.language = searchLanguage;
+                response = await makeHttpsRequest(`${this.baseURL}/movie/${movieId}`, params);
+                movie = response.data;
+            }
 
             const result = {
                 id: movie.id,
@@ -262,8 +344,8 @@ class TMDBService {
                 release_date: movie.release_date,
                 budget: movie.budget,
                 revenue: movie.revenue,
-                director: movie.credits?.crew?.find(c => c.job === 'Director')?.name,
-                cast: movie.credits?.cast?.slice(0, 10).map(a => a.name),
+                director: translateName(movie.credits?.crew?.find(c => c.job === 'Director')?.name),
+                cast: movie.credits?.cast?.slice(0, 10).map(a => translateName(a.name)),
                 production_companies: movie.production_companies?.map(c => c.name),
                 tagline: movie.tagline,
                 status: movie.status
@@ -334,6 +416,33 @@ class TMDBService {
     // Получение размера кэша
     getCacheSize() {
         return this.cache.size;
+    }
+
+    // Добавление перевода имени в словарь
+    addTranslation(englishName, russianName) {
+        if (englishName && russianName) {
+            ACTOR_TRANSLATIONS[englishName] = russianName;
+            console.log(`📝 Добавлен перевод: ${englishName} -> ${russianName}`);
+        }
+    }
+
+    // Получение всех переводов
+    getTranslations() {
+        return { ...ACTOR_TRANSLATIONS };
+    }
+
+    // Получение статистики локализации
+    getLocalizationStats() {
+        return {
+            totalTranslations: Object.keys(ACTOR_TRANSLATIONS).length,
+            cacheSize: this.cache.size,
+            cacheTimeout: this.cacheTimeout
+        };
+    }
+
+    // Экспорт функции перевода для тестирования
+    translateName(name) {
+        return translateName(name);
     }
 }
 

@@ -10,7 +10,7 @@
     <div class="col-12">
       <div class="card rounded-4">
         <div class="card-body">
-          <h2 class="h5 mb-3">Поиск на YTS</h2>
+          <h2 class="h5 mb-3">Поиск фильмов</h2>
           <form id="ytsSearchForm" class="d-grid gap-3">
             <div class="row">
               <div class="col-md-8">
@@ -287,11 +287,11 @@
                     Размер: ${item.size || ''} | Сиды: ${item.seeds} | Личи: ${item.leeches} | Рейтинг: ${item.rating ?? ''}
                   </div>
                 </div>
-                <div class="d-flex gap-2">
-                  <button class="btn btn-outline-secondary btn-sm rounded-3" onclick="openYtsDetails('${item.movieId}')">Детали</button>
-                  <button class="btn btn-outline-primary btn-sm rounded-3" onclick="showYtsFiles('${encodeURIComponent(item.torrentUrl)}')">Файлы</button>
-                  <button class="btn btn-outline-success btn-sm rounded-3" onclick="addYtsTorrent('${item.hash}', '${encodeURIComponent(item.title)}')">Добавить</button>
-                </div>
+                      <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm rounded-3" onclick="openYtsDetails('${item.movieId}')">Детали</button>
+        ${item.torrents && item.torrents.length > 0 ? `<button class="btn btn-outline-primary btn-sm rounded-3" onclick="showYtsTorrents('${item.movieId}')">Торренты</button>` : ''}
+        ${item.torrents && item.torrents.length > 0 ? `<button class="btn btn-outline-success btn-sm rounded-3" onclick="addBestTorrent('${item.movieId}')">Добавить лучший</button>` : ''}
+      </div>
               </div>
             </div>
           </div>
@@ -300,38 +300,41 @@
     `).join('');
   }
 
-  async function showYtsFiles(torrentUrlEnc) {
+  async function showYtsTorrents(movieId) {
     try {
-      ytsFilesList.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><div class="mt-2">Загрузка...</div></div>';
+      ytsFilesList.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div><div class="mt-2">Загрузка торрентов...</div></div>';
       ytsFiles.style.display = 'block';
 
-      const res = await fetch(`/api/yts/files?url=${torrentUrlEnc}`);
+      const res = await fetch(`/api/yts/details/${movieId}`);
       const data = await res.json();
 
-      if (data.success && data.files) {
-        renderYtsFiles(data.files);
+      if (data.success && data.info && data.info.torrents) {
+        renderYtsTorrents(data.info.torrents);
       } else {
-        ytsFilesList.innerHTML = `<div class="alert alert-warning">${data.msg || 'Ошибка загрузки файлов'}</div>`;
+        ytsFilesList.innerHTML = `<div class="alert alert-warning">Торренты не найдены</div>`;
       }
     } catch (error) {
-      console.error('Kinozal files error:', error);
-      kinozalFilesList.innerHTML = '<div class="alert alert-danger">Ошибка сети</div>';
+      console.error('Torrents error:', error);
+      ytsFilesList.innerHTML = '<div class="alert alert-danger">Ошибка сети</div>';
     }
   }
 
-  function renderYtsFiles(files) {
-    if (!files || files.length === 0) {
-      ytsFilesList.innerHTML = '<div class="alert alert-info">Файлы не найдены</div>';
+  function renderYtsTorrents(torrents) {
+    if (!torrents || torrents.length === 0) {
+      ytsFilesList.innerHTML = '<div class="alert alert-info">Торренты не найдены</div>';
       return;
     }
 
-    ytsFilesList.innerHTML = files.map(file => `
-      <div class="d-flex justify-content-between align-items-center p-2 bg-body-secondary rounded-2">
+    ytsFilesList.innerHTML = torrents.map(torrent => `
+      <div class="d-flex justify-content-between align-items-center p-2 bg-body-secondary rounded-2 mb-2">
         <div class="flex-grow-1">
-          <div class="small">${file.name}</div>
-          <div class="small text-muted">${file.path}</div>
+          <div class="small fw-bold">${torrent.title}</div>
+          <div class="small text-muted">Размер: ${torrent.size} | Сиды: ${torrent.seeds} | Личи: ${torrent.leeches}</div>
+          ${torrent.quality ? `<div class="small text-muted">Качество: ${torrent.quality}</div>` : ''}
         </div>
-        <div class="small text-muted">${file.size}</div>
+        <button class="btn btn-outline-success btn-sm" onclick="addTorrentMagnet('${torrent.link}')">
+          Добавить
+        </button>
       </div>
     `).join('');
   }
@@ -344,26 +347,67 @@
       const m = data.info;
       const body = document.getElementById('ytsDetailsBody');
       document.getElementById('ytsDetailsTitle').textContent = `${m.title} (${m.year})`;
-      body.innerHTML = `
-        <div class="d-flex gap-3">
-          <img src="${m.poster || ''}" style="width:160px;height:240px;object-fit:cover;border-radius:10px"/>
-          <div>
-            <div class="mb-2"><strong>Рейтинг:</strong> ${m.rating ?? ''}</div>
-            <div class="mb-2"><strong>Жанры:</strong> ${(m.genres||[]).join(', ')}</div>
-            <div class="mb-2"><strong>Длительность:</strong> ${m.runtime || ''} мин</div>
-            <div class="mb-2"><strong>IMDB:</strong> ${m.imdbCode || ''}</div>
+      
+      // Определяем, является ли это Kinopoisk фильмом
+      const isKinopoisk = movieId.startsWith('kinopoisk_');
+      
+      if (isKinopoisk) {
+        // Для Kinopoisk фильмов
+        body.innerHTML = `
+          <div class="d-flex gap-3">
+            <img src="${m.poster || ''}" style="width:160px;height:240px;object-fit:cover;border-radius:10px" onerror="this.style.display='none'"/>
+            <div>
+              <div class="mb-2"><strong>Рейтинг Кинопоиск:</strong> ${m.ratingKinopoisk ?? 'Нет данных'}</div>
+              <div class="mb-2"><strong>Рейтинг IMDb:</strong> ${m.ratingImdb ?? 'Нет данных'}</div>
+              <div class="mb-2"><strong>Жанры:</strong> ${(m.genres||[]).join(', ') || 'Не указаны'}</div>
+              <div class="mb-2"><strong>Длительность:</strong> ${m.runtime || 'Не указана'} мин</div>
+              <div class="mb-2"><strong>Режиссер:</strong> ${m.director || 'Не указан'}</div>
+              <div class="mb-2"><strong>Страны:</strong> ${(m.countries||[]).join(', ') || 'Не указаны'}</div>
+              <div class="mb-2"><strong>IMDb ID:</strong> ${m.imdbCode || 'Не указан'}</div>
+              <div class="mb-2"><strong>Возрастной рейтинг:</strong> ${m.ageRating ? m.ageRating + '+' : 'Не указан'}</div>
+              <div class="mb-2"><strong>Тип:</strong> ${m.type === 'series' ? 'Сериал' : 'Фильм'}</div>
+            </div>
           </div>
-        </div>
-        <div class="mt-3">${m.description || ''}</div>
-        <h6 class="mt-3">Актеры</h6>
-        <div class="d-flex flex-wrap gap-2">
-          ${(m.cast||[]).slice(0,12).map(c=>`<span class="badge text-bg-secondary">${c.name}${c.character?` — ${c.character}`:''}</span>`).join('')}
-        </div>
-        <h6 class="mt-3">Доступные торренты</h6>
-        <div class="d-flex flex-wrap gap-2">
-          ${m.torrents.map(t=>`<button class="btn btn-outline-primary btn-sm rounded-3" onclick="addYtsMagnet('${t.hash}')">${t.quality} ${t.type} • ${t.size}</button>`).join('')}
-        </div>
-      `;
+          <div class="mt-3">${m.overview || m.description || 'Описание недоступно'}</div>
+          <h6 class="mt-3">Актеры</h6>
+          <div class="d-flex flex-wrap gap-2">
+            ${(m.cast||[]).slice(0,12).map(c=>`<span class="badge text-bg-secondary">${c}</span>`).join('') || '<span class="text-muted">Актеры не указаны</span>'}
+          </div>
+          ${m.torrents && m.torrents.length > 0 ? `
+            <h6 class="mt-3">Найденные торренты (${m.torrents.length})</h6>
+            <div class="d-flex flex-wrap gap-2">
+              ${m.torrents.slice(0, 5).map(t=>`<button class="btn btn-outline-primary btn-sm rounded-3" onclick="addTorrentMagnet('${t.link}')">${t.title.substring(0, 30)}... • ${t.size} • ${t.seeds}↑</button>`).join('')}
+            </div>
+          ` : `
+            <div class="mt-3 alert alert-info">
+              <strong>Информация:</strong> Данные получены через официальный Kinopoisk API. Торренты не найдены.
+            </div>
+          `}
+        `;
+      } else {
+        // Для обычных фильмов (если будут)
+        body.innerHTML = `
+          <div class="d-flex gap-3">
+            <img src="${m.poster || ''}" style="width:160px;height:240px;object-fit:cover;border-radius:10px"/>
+            <div>
+              <div class="mb-2"><strong>Рейтинг:</strong> ${m.rating ?? ''}</div>
+              <div class="mb-2"><strong>Жанры:</strong> ${(m.genres||[]).join(', ')}</div>
+              <div class="mb-2"><strong>Длительность:</strong> ${m.runtime || ''} мин</div>
+              <div class="mb-2"><strong>IMDB:</strong> ${m.imdbCode || ''}</div>
+            </div>
+          </div>
+          <div class="mt-3">${m.description || ''}</div>
+          <h6 class="mt-3">Актеры</h6>
+          <div class="d-flex flex-wrap gap-2">
+            ${(m.cast||[]).slice(0,12).map(c=>`<span class="badge text-bg-secondary">${c.name}${c.character?` — ${c.character}`:''}</span>`).join('')}
+          </div>
+          <h6 class="mt-3">Доступные торренты</h6>
+          <div class="d-flex flex-wrap gap-2">
+            ${m.torrents.map(t=>`<button class="btn btn-outline-primary btn-sm rounded-3" onclick="addYtsMagnet('${t.hash}')">${t.quality} ${t.type} • ${t.size}</button>`).join('')}
+          </div>
+        `;
+      }
+      
       const modal = new bootstrap.Modal(document.getElementById('ytsDetailsModal'));
       modal.show();
     } catch (e) {
@@ -371,36 +415,38 @@
     }
   }
 
-  async function addYtsMagnet(hash) {
+  async function addTorrentMagnet(magnetLink) {
     try {
-      const res = await fetch(`/api/yts/magnet/${hash}`);
-      const data = await res.json();
-      if (data.success && data.magnet) {
-        await fetch('/torrents/api/add-magnet', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ magnet: data.magnet }) });
-        alert('Торрент добавлен в загрузки!');
-      } else {
-        alert(data.msg || 'Ошибка получения magnet-ссылки');
-      }
-    } catch (e) { alert('Ошибка'); }
+      await fetch('/torrents/api/add-magnet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ magnet: magnetLink })
+      });
+      alert('Торрент добавлен в загрузки!');
+    } catch (error) {
+      console.error('Add torrent error:', error);
+      alert('Ошибка добавления торрента');
+    }
   }
 
-  async function addYtsTorrent(hash, titleEnc) {
+  async function addBestTorrent(movieId) {
     try {
-      const res = await fetch(`/api/yts/magnet/${hash}`);
+      const res = await fetch(`/api/yts/details/${movieId}`);
       const data = await res.json();
 
-      if (data.success && data.magnet) {
+      if (data.success && data.info && data.info.torrents && data.info.torrents.length > 0) {
+        const bestTorrent = data.info.torrents[0]; // Первый торрент (сортированный по сидам)
         await fetch('/torrents/api/add-magnet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ magnet: data.magnet })
+          body: JSON.stringify({ magnet: bestTorrent.link })
         });
-        alert('Торрент добавлен в загрузки!');
+        alert(`Добавлен лучший торрент: ${bestTorrent.title.substring(0, 50)}...`);
       } else {
-        alert(data.msg || 'Ошибка получения magnet-ссылки');
+        alert('Торренты не найдены');
       }
     } catch (error) {
-      console.error('Kinozal add torrent error:', error);
+      console.error('Add best torrent error:', error);
       alert('Ошибка добавления торрента');
     }
   }

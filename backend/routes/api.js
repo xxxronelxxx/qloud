@@ -17,6 +17,10 @@ const SettingsController = require('../controllers/SettingsController');
 const settings = new SettingsController();
 const adminOnly = require('../middleware/adminOnly');
 
+const TMDBService = require('../services/TMDBService');
+const RussianMovieService = require('../services/RussianMovieService');
+const KinopoiskService = require('../services/KinopoiskService');
+const RussianMoviesParser = require('../services/RussianMoviesParser');
 
 
 router.get("/get-host",fs.handleHostConnection);
@@ -66,6 +70,186 @@ router.post('/tmdb/test', adminOnly, async (req, res) => {
       else delete process.env[k];
     });
   }
+});
+
+// TMDB локализация API
+router.get('/tmdb/localization/stats', adminOnly, (req, res) => {
+  try {
+    const stats = TMDBService.getLocalizationStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/tmdb/localization/translations', adminOnly, (req, res) => {
+  try {
+    const translations = TMDBService.getTranslations();
+    res.json({ success: true, data: translations });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.post('/tmdb/localization/translations', adminOnly, (req, res) => {
+  try {
+    const { englishName, russianName } = req.body;
+    
+    if (!englishName || !russianName) {
+      return res.json({ success: false, msg: 'Не указаны английское и русское имена' });
+    }
+    
+    TMDBService.addTranslation(englishName, russianName);
+    res.json({ success: true, msg: 'Перевод добавлен' });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.post('/tmdb/cache/clear', adminOnly, (req, res) => {
+  try {
+    TMDBService.clearCache();
+    res.json({ success: true, msg: 'Кэш TMDB очищен' });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+// Russian Movie API
+router.post('/russian-movies/search', adminOnly, async (req, res) => {
+  try {
+    const { query, year } = req.body;
+    
+    if (!query) {
+      return res.json({ success: false, msg: 'Не указан поисковый запрос' });
+    }
+    
+    const result = await RussianMovieService.searchRussianMovies(query, year);
+    
+    if (result) {
+      res.json({ success: true, data: result });
+    } else {
+      res.json({ success: false, msg: 'Фильм не найден' });
+    }
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/russian-movies/stats', adminOnly, (req, res) => {
+  try {
+    const stats = RussianMovieService.getStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.post('/russian-movies/cache/clear', adminOnly, (req, res) => {
+  try {
+    RussianMovieService.clearCache();
+    res.json({ success: true, msg: 'Кэш очищен' });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+// Kinopoisk API
+router.post('/kinopoisk/search', adminOnly, async (req, res) => {
+  try {
+    const { query, year } = req.body;
+    
+    if (!query) {
+      return res.json({ success: false, msg: 'Не указан поисковый запрос' });
+    }
+    
+    const result = await KinopoiskService.searchMovies(query, year);
+    
+    if (result) {
+      res.json({ success: true, data: result });
+    } else {
+      res.json({ success: false, msg: 'Фильм не найден в Kinopoisk' });
+    }
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/kinopoisk/stats', adminOnly, (req, res) => {
+  try {
+    const stats = KinopoiskService.getStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+// Kinopoisk API тест
+router.post('/kinopoisk/test', adminOnly, async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.json({ success: false, msg: 'Не указан API ключ' });
+    }
+
+    // Тестируем подключение к Kinopoisk API
+    const testURL = 'https://api.kinopoisk.dev/v1.4/movie/search';
+    const params = { page: 1, limit: 1, query: 'тест' };
+
+    const response = await axios.get(testURL, {
+      params: params,
+      headers: {
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (response.status === 200) {
+      res.json({ success: true, msg: 'Kinopoisk API доступен' });
+    } else {
+      res.json({ success: false, msg: `Ошибка API: ${response.status}` });
+    }
+  } catch (error) {
+    console.error('Kinopoisk API test error:', error.message);
+    res.json({ success: false, msg: `Ошибка подключения: ${error.message}` });
+  }
+});
+
+// Парсинг API
+router.post('/parser/search', adminOnly, async (req, res) => {
+  try {
+    const { query, year } = req.body;
+    
+    if (!query) {
+      return res.json({ success: false, msg: 'Не указан поисковый запрос' });
+    }
+    
+    const result = await RussianMoviesParser.searchMultiSource(query, year);
+    
+    if (result) {
+      res.json({ success: true, data: result });
+    } else {
+      res.json({ success: false, msg: 'Фильм не найден через парсинг' });
+    }
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+router.get('/parser/stats', adminOnly, (req, res) => {
+  try {
+    const stats = RussianMoviesParser.getStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.json({ success: false, msg: error.message });
+  }
+});
+
+// Тестовая страница поиска
+router.get('/test-search', (req, res) => {
+  res.sendFile('test-interface.html', { root: './' });
 });
 
 module.exports = router;

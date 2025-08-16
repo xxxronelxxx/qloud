@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs').promises;
 const TMDBService = require('./TMDBService');
+const RussianMovieService = require('./RussianMovieService');
 const MediaInfoService = require('./MediaInfoService');
 
 class SmartFileProcessor {
@@ -110,16 +111,31 @@ class SmartFileProcessor {
                 return { success: false, error: 'Не удалось извлечь информацию о фильме из названия' };
             }
 
-            // Ищем фильм в TMDB
-            const tmdbInfo = await TMDBService.searchMovie(movieInfo.title, movieInfo.year);
+            let details = null;
+            let searchMethod = '';
+
+            // Сначала пробуем найти русский фильм или фильм с русским переводом
+            if (options.preferRussian || this.isLikelyRussianMovie(movieInfo.title)) {
+                console.log('🔍 Поиск русского фильма...');
+                details = await RussianMovieService.searchRussianMovies(movieInfo.title, movieInfo.year);
+                searchMethod = 'russian';
+            }
+
+            // Если не найден русский фильм, используем обычный TMDB поиск
+            if (!details) {
+                console.log('🔍 Поиск через TMDB...');
+                const tmdbInfo = await TMDBService.searchMovie(movieInfo.title, movieInfo.year);
+                
+                if (tmdbInfo) {
+                    details = await TMDBService.getMovieDetails(tmdbInfo.id);
+                    searchMethod = 'tmdb';
+                }
+            }
             
-            if (!tmdbInfo) {
+            if (!details) {
                 return { success: false, error: 'Фильм не найден в базе данных' };
             }
 
-            // Получаем детальную информацию
-            const details = await TMDBService.getMovieDetails(tmdbInfo.id);
-            
             // Формируем новое имя файла
             const newFileName = this.generateMovieFileName(details, fileInfo, options);
             
@@ -131,12 +147,34 @@ class SmartFileProcessor {
                 originalPath: filePath,
                 newPath: newPath,
                 movieInfo: details,
-                fileInfo: fileInfo
+                fileInfo: fileInfo,
+                searchMethod: searchMethod
             };
         } catch (error) {
             console.error('Video processing error:', error);
             return { success: false, error: error.message };
         }
+    }
+
+    // Проверка, является ли фильм вероятно русским
+    isLikelyRussianMovie(title) {
+        if (!title) return false;
+        
+        // Проверяем наличие кириллицы в названии
+        const hasRussianChars = /[а-яё]/i.test(title);
+        
+        // Список ключевых слов, указывающих на русский фильм
+        const russianKeywords = [
+            'россия', 'русский', 'советский', 'москва', 'спб', 'питер',
+            'россия', 'русский', 'советский', 'москва', 'спб', 'питер',
+            'россия', 'русский', 'советский', 'москва', 'спб', 'питер'
+        ];
+        
+        const hasRussianKeywords = russianKeywords.some(keyword => 
+            title.toLowerCase().includes(keyword.toLowerCase())
+        );
+        
+        return hasRussianChars || hasRussianKeywords;
     }
 
     // Обработка аудио файла
