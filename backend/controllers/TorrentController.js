@@ -99,6 +99,19 @@ class TorrentController {
       }
     }
     
+    // Правильно сериализуем файлы без циклических ссылок
+    let serializedFiles = [];
+    if (hasMetadata && t.files && t.files.length > 0) {
+      serializedFiles = t.files.map((file, index) => ({
+        index: index,
+        name: file.name || 'Неизвестный файл',
+        length: file.length || 0,
+        path: file.path || '',
+        selected: file.selected || false,
+        mime: this.getMimeType(file.name) || 'application/octet-stream'
+      }));
+    }
+    
     return {
       infoHash: t.infoHash,
       name: hasMetadata ? t.name : `Загрузка метаданных... (${t.infoHash.substring(0, 8)})`,
@@ -113,9 +126,62 @@ class TorrentController {
       numSeeds: numSeeds,
       numLeeches: numLeeches,
       paused: t.paused,
-      files: hasMetadata ? t.files : [],
+      files: serializedFiles,
       hasMetadata: hasMetadata
     };
+  }
+  
+  // Вспомогательный метод для определения MIME типа
+  getMimeType(filename) {
+    if (!filename) return 'application/octet-stream';
+    
+    const ext = filename.split('.').pop().toLowerCase();
+    const mimeTypes = {
+      // Видео
+      'mp4': 'video/mp4',
+      'avi': 'video/x-msvideo',
+      'mkv': 'video/x-matroska',
+      'mov': 'video/quicktime',
+      'wmv': 'video/x-ms-wmv',
+      'flv': 'video/x-flv',
+      'webm': 'video/webm',
+      'm4v': 'video/x-m4v',
+      '3gp': 'video/3gpp',
+      
+      // Аудио
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'flac': 'audio/flac',
+      'aac': 'audio/aac',
+      'ogg': 'audio/ogg',
+      'wma': 'audio/x-ms-wma',
+      'm4a': 'audio/mp4',
+      
+      // Изображения
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'bmp': 'image/bmp',
+      'webp': 'image/webp',
+      
+      // Документы
+      'pdf': 'application/pdf',
+      'txt': 'text/plain',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      
+      // Архивы
+      'zip': 'application/zip',
+      'rar': 'application/x-rar-compressed',
+      '7z': 'application/x-7z-compressed',
+      'tar': 'application/x-tar',
+      'gz': 'application/gzip'
+    };
+    
+    return mimeTypes[ext] || 'application/octet-stream';
   }
 
   wireTorrent(torrent) {
@@ -952,30 +1018,66 @@ class TorrentController {
         return res.json({ success: false, msg: 'Торрент не найден' });
       }
 
+      // Правильно считаем количество пиров
+      let numPeers = 0;
+      let numSeeds = 0;
+      let numLeeches = 0;
+      
+      if (torrent.wires && torrent.wires.length > 0) {
+        numPeers = torrent.wires.length;
+        torrent.wires.forEach(wire => {
+          if (wire.peer && wire.peer.isSeeder) {
+            numSeeds++;
+          } else {
+            numLeeches++;
+          }
+        });
+      } else {
+        numPeers = torrent.numPeers || 0;
+        numSeeds = torrent.numSeeds || 0;
+        numLeeches = torrent.numLeeches || 0;
+      }
+
+      // Безопасно получаем информацию о файлах
+      let filesCount = 0;
+      let selectedFiles = 0;
+      if (torrent.files && torrent.files.length > 0) {
+        filesCount = torrent.files.length;
+        selectedFiles = torrent.files.filter(f => f.selected).length;
+      }
+
+      // Безопасно получаем информацию о кусках
+      let piecesCount = 0;
+      let selectedPieces = 0;
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        piecesCount = torrent.pieces.length;
+        selectedPieces = torrent.pieces.filter(p => p).length;
+      }
+
       const diagnosis = {
         infoHash: torrent.infoHash,
-        name: torrent.name,
-        paused: torrent.paused,
-        progress: torrent.progress,
-        downloaded: torrent.downloaded,
-        length: torrent.length,
-        numPeers: torrent.numPeers,
-        numSeeds: torrent.numSeeds,
-        numLeeches: torrent.numLeeches,
-        downloadSpeed: torrent.downloadSpeed,
-        uploadSpeed: torrent.uploadSpeed,
-        timeRemaining: torrent.timeRemaining,
+        name: torrent.name || 'Неизвестно',
+        paused: torrent.paused || false,
+        progress: Math.round((torrent.progress || 0) * 100),
+        downloaded: torrent.downloaded || 0,
+        length: torrent.length || 0,
+        numPeers: numPeers,
+        numSeeds: numSeeds,
+        numLeeches: numLeeches,
+        downloadSpeed: torrent.downloadSpeed || 0,
+        uploadSpeed: torrent.uploadSpeed || 0,
+        timeRemaining: torrent.timeRemaining || 0,
         hasMetadata: !!(torrent.files && torrent.files.length > 0),
-        filesCount: torrent.files ? torrent.files.length : 0,
-        piecesCount: torrent.pieces ? torrent.pieces.length : 0,
-        selectedPieces: torrent.pieces ? torrent.pieces.filter(p => p).length : 0,
-        selectedFiles: torrent.files ? torrent.files.filter(f => f.selected).length : 0,
-        announce: torrent.announce || [],
-        magnetURI: torrent.magnetURI,
-        status: torrent.status,
+        filesCount: filesCount,
+        piecesCount: piecesCount,
+        selectedPieces: selectedPieces,
+        selectedFiles: selectedFiles,
+        announce: Array.isArray(torrent.announce) ? torrent.announce : [],
+        magnetURI: torrent.magnetURI || '',
+        status: torrent.status || 'unknown',
         error: torrent.error ? torrent.error.message : null,
         // Дополнительная информация о трекерах
-        trackers: torrent.announce ? torrent.announce.map((tracker, index) => ({
+        trackers: Array.isArray(torrent.announce) ? torrent.announce.map((tracker, index) => ({
           index,
           url: tracker,
           status: 'active'
@@ -986,17 +1088,17 @@ class TorrentController {
         lpd: torrent.lpd ? 'enabled' : 'disabled',
         // Детальная информация о пирах
         peers: {
-          total: torrent.numPeers,
-          seeds: torrent.numSeeds,
-          leeches: torrent.numLeeches,
+          total: numPeers,
+          seeds: numSeeds,
+          leeches: numLeeches,
           connected: torrent.wires ? torrent.wires.length : 0,
-          wireAddresses: torrent.wires ? torrent.wires.map(wire => wire.peerAddress) : []
+          wireAddresses: torrent.wires ? torrent.wires.map(wire => wire.peerAddress || 'unknown').filter(addr => addr !== 'unknown') : []
         },
         // Информация о трекерах
         trackerInfo: {
           hasTracker: !!(torrent.tracker),
           trackerStatus: torrent.tracker ? 'active' : 'inactive',
-          lastAnnounce: torrent.tracker ? torrent.tracker.lastAnnounce : null
+          lastAnnounce: null // Убираем потенциально проблемное поле
         }
       };
 
