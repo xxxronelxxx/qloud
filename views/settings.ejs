@@ -852,11 +852,35 @@
 
     // Форма поиска русских фильмов
     if (russianSearchForm) {
+      console.log('✅ Форма поиска русских фильмов найдена');
+      
+      // Добавляем обработчик для отладки
+      const queryInput = document.getElementById('russianMovieQuery');
+      const yearInput = document.getElementById('russianMovieYear');
+      
+      if (queryInput) {
+        console.log('✅ Поле ввода запроса найдено');
+        queryInput.addEventListener('input', (e) => {
+          console.log('Ввод в поле запроса:', e.target.value);
+        });
+      } else {
+        console.error('❌ Поле ввода запроса не найдено');
+      }
+      
+      if (yearInput) {
+        console.log('✅ Поле ввода года найдено');
+      } else {
+        console.error('❌ Поле ввода года не найдено');
+      }
+      
       russianSearchForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        console.log('📝 Форма поиска отправлена');
         
-        const query = document.getElementById('russianMovieQuery').value.trim();
-        const year = document.getElementById('russianMovieYear').value.trim();
+        const query = document.getElementById('russianMovieQuery')?.value?.trim();
+        const year = document.getElementById('russianMovieYear')?.value?.trim();
+        
+        console.log('🔍 Поисковый запрос:', { query, year });
         
         if (!query) {
           alert('Введите название фильма');
@@ -869,13 +893,18 @@
             requestBody.year = parseInt(year);
           }
           
+          console.log('📤 Отправка запроса:', requestBody);
+          
           const res = await fetch('/api/russian-movies/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
           });
           
+          console.log('📥 Получен ответ, статус:', res.status);
+          
           const data = await res.json();
+          console.log('📥 Данные ответа:', data);
           
           if (data.success) {
             const movie = data.data;
@@ -892,7 +921,12 @@
                   <p><strong>Язык оригинала:</strong> ${movie.original_language}</p>
                   <p><strong>Русский фильм:</strong> ${movie.is_russian ? 'Да' : 'Нет'}</p>
                   <p><strong>Перевод:</strong> ${movie.is_translation ? 'Да' : 'Нет'}</p>
-                  <p><strong>Источник:</strong> ${movie.source === 'local_database' ? 'Локальная база данных' : 'TMDB'}</p>
+                  <p><strong>Источник:</strong> ${movie.source === 'local_database' ? 'Локальная база данных' : 
+                    movie.source === 'kinopoisk' ? 'Kinopoisk API' :
+                    movie.source === 'kinopoisk_web' ? 'Kinopoisk (парсинг)' :
+                    movie.source === 'rutor' ? 'Rutor.info' :
+                    movie.source === 'nyaa' ? 'Nyaa.si' :
+                    movie.source === 'tmdb' ? 'TMDB' : movie.source}</p>
                   <p><strong>Тип:</strong> ${movie.type === 'series' ? 'Сериал' : 'Фильм'}</p>
                 </div>
                 <div class="col-md-4">
@@ -901,16 +935,20 @@
               </div>
             `;
             russianResultDiv.style.display = 'block';
+            console.log('✅ Результат отображен');
           } else {
             russianResultContent.innerHTML = `<p class="text-danger">${data.msg}</p>`;
             russianResultDiv.style.display = 'block';
+            console.log('❌ Ошибка поиска:', data.msg);
           }
         } catch (error) {
-          console.error('Error searching russian movie:', error);
+          console.error('💥 Ошибка поиска русских фильмов:', error);
           russianResultContent.innerHTML = `<p class="text-danger">Ошибка поиска: ${error.message}</p>`;
           russianResultDiv.style.display = 'block';
         }
       });
+    } else {
+      console.error('❌ Форма поиска русских фильмов не найдена');
     }
 
     // Загружаем статистику при загрузке страницы

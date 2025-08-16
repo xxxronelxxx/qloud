@@ -261,4 +261,9 @@ router.get('/parser/stats', adminOnly, (req, res) => {
   }
 });
 
+// Тестовая страница поиска
+router.get('/test-search', (req, res) => {
+  res.sendFile('test-interface.html', { root: './' });
+});
+
 module.exports = router;
