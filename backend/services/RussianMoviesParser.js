@@ -139,7 +139,7 @@ class RussianMoviesParser {
             const response = await axios.get(searchUrl, {
                 timeout: 15000,
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8'
                 }
@@ -155,6 +155,7 @@ class RussianMoviesParser {
                 const yearText = $elem.find('.year').text().trim();
                 const rating = $elem.find('.rating').text().trim();
                 const description = $elem.find('.descr').text().trim();
+                const posterUrl = $elem.find('.pic img').attr('src') || '';
                 
                 const extractedYear = this.extractYear(yearText);
                 
@@ -164,6 +165,7 @@ class RussianMoviesParser {
                         year: extractedYear,
                         rating: rating,
                         description: description,
+                        poster_path: posterUrl,
                         source: 'kinopoisk_web'
                     });
                 }
@@ -177,6 +179,7 @@ class RussianMoviesParser {
                     year: results[0].year,
                     rating: results[0].rating,
                     description: results[0].description,
+                    poster_path: results[0].poster_path,
                     source: 'kinopoisk_web',
                     results: results,
                     is_russian: this.isRussianContent(results[0].title, results[0].description)

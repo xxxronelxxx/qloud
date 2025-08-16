@@ -1,6 +1,7 @@
 const axios = require('axios');
 const parseTorrent = require('parse-torrent');
 const Settings = require('../models/SettingsModel');
+const RussianMovieService = require('../services/RussianMovieService');
 const https = require('https');
 
 class YtsController {
@@ -146,6 +147,46 @@ class YtsController {
     return results;
   }
 
+  // Форматирование русских фильмов (без торрентов)
+  formatRussianMovie(russianMovie) {
+    // Определяем URL постера
+    let posterUrl = '';
+    if (russianMovie.poster_path) {
+      if (russianMovie.poster_path.startsWith('http')) {
+        posterUrl = russianMovie.poster_path;
+      } else {
+        posterUrl = `https://image.tmdb.org/t/p/w500${russianMovie.poster_path}`;
+      }
+    }
+    
+    return [{
+      id: `russian_${russianMovie.id}`,
+      movieId: russianMovie.id,
+      title: `${russianMovie.title} (${russianMovie.year}) [Русский фильм]`,
+      quality: 'Unknown',
+      type: 'movie',
+      size: 'Unknown',
+      seeds: 0,
+      leeches: 0,
+      date: russianMovie.release_date || new Date().toISOString(),
+      hash: '',
+      torrentUrl: '',
+      magnet: '',
+      poster: posterUrl,
+      year: russianMovie.year,
+      rating: russianMovie.rating,
+      overview: russianMovie.overview,
+      director: russianMovie.director,
+      cast: russianMovie.cast,
+      genres: russianMovie.genres,
+      runtime: russianMovie.runtime,
+      source: russianMovie.source,
+      is_russian: russianMovie.is_russian,
+      type: russianMovie.type,
+      original_title: russianMovie.original_title
+    }];
+  }
+
   async search(query, page = 1) {
     console.log(`[YTS] Поиск: "${query}" (страница ${page})`);
     
@@ -155,6 +196,26 @@ class YtsController {
       this.tmdbApiKey = (cfg && cfg.tmdbApiKey) || process.env.TMDB_API_KEY || '';
       console.log(`[YTS] TMDB ключ: ${this.tmdbApiKey ? 'есть' : 'нет'}`);
     } catch (_) {}
+
+    // Сначала пробуем найти русский фильм
+    if (this.hasNonAscii(query)) {
+      console.log(`[YTS] Обнаружена кириллица, пробуем поиск русских фильмов...`);
+      try {
+        const russianMovie = await RussianMovieService.searchRussianMovies(query);
+        if (russianMovie) {
+          console.log(`[YTS] Найден русский фильм: ${russianMovie.title} (${russianMovie.source})`);
+          
+          // Форматируем результат в формат YTS
+          const ytsFormatResult = this.formatRussianMovie(russianMovie);
+          
+          return ytsFormatResult;
+        } else {
+          console.log(`[YTS] Русский фильм не найден, продолжаем поиск через YTS...`);
+        }
+      } catch (error) {
+        console.log(`[YTS] Ошибка поиска русских фильмов:`, error.message);
+      }
+    }
 
     // Прямой поиск на YTS (принудительно без прокси)
     const url = `${this.baseApi}/list_movies.json?query_term=${encodeURIComponent(query)}&page=${page}&limit=20`;
