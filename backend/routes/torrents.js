@@ -20,6 +20,7 @@ router.delete('/api/:infoHash', adminOnly, Torrent.remove);
 router.post('/api/:infoHash/pause', adminOnly, Torrent.pause);
 router.post('/api/:infoHash/resume', adminOnly, Torrent.resume);
 router.post('/api/:infoHash/force-start', adminOnly, Torrent.forceStart);
+router.post('/api/:infoHash/force-restart', adminOnly, Torrent.forceRestart);
 router.post('/api/:infoHash/force-update-stats', adminOnly, Torrent.forceUpdateStats);
 router.post('/api/:infoHash/force-reconnect', adminOnly, Torrent.forceReconnect);
 router.post('/api/:infoHash/force-connect', adminOnly, Torrent.forceConnect);

@@ -396,6 +396,16 @@ class TorrentController {
         if (torrent.dht) {
           console.log(`[Повторное подключение к DHT] ${torrent.name}`);
         }
+        
+        // Принудительно обновляем трекер
+        if (torrent.tracker) {
+          try {
+            torrent.tracker.announce();
+            console.log(`[Принудительное обновление трекера] ${torrent.name}`);
+          } catch (e) {
+            console.log(`[Ошибка обновления трекера] ${torrent.name}:`, e.message);
+          }
+        }
       } else {
         // Метаданные загружены, останавливаем проверку
         console.log(`[Метаданные загружены] ${torrent.name}`);
@@ -710,6 +720,80 @@ class TorrentController {
     }
   }
 
+  // Метод для принудительного перезапуска торрента
+  forceRestart = async (req, res) => {
+    try {
+      const { infoHash } = req.params;
+      const client = await this.getClient();
+      const torrent = client.get(infoHash);
+
+      if (!torrent) {
+        return res.json({ success: false, msg: 'Торрент не найден' });
+      }
+
+      console.log(`[Принудительный перезапуск] ${torrent.name || torrent.infoHash}`);
+
+      // Останавливаем торрент
+      torrent.pause();
+      
+      // Ждем немного
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Запускаем торрент заново
+      torrent.resume();
+
+      // Принудительно подключаемся к трекерам
+      if (torrent.announce && torrent.announce.length > 0) {
+        console.log(`[Принудительное подключение к трекерам] ${torrent.name}`);
+        torrent.announce.forEach((tracker, index) => {
+          console.log(`[Трекер ${index}] ${tracker}`);
+        });
+        
+        // Принудительно обновляем трекер
+        if (torrent.tracker) {
+          try {
+            torrent.tracker.announce();
+            console.log(`[Трекер обновлен] ${torrent.name}`);
+          } catch (e) {
+            console.log(`[Ошибка трекера] ${torrent.name}:`, e.message);
+          }
+        }
+      }
+
+      // Принудительно подключаемся к DHT
+      if (torrent.dht) {
+        console.log(`[Принудительное подключение к DHT] ${torrent.name}`);
+      }
+
+      // Принудительно подключаемся к локальному peer discovery
+      if (torrent.lpd) {
+        console.log(`[Принудительное подключение к LPD] ${torrent.name}`);
+      }
+
+      // Принудительно выбираем все файлы для загрузки
+      if (torrent.files && torrent.files.length > 0) {
+        torrent.files.forEach(file => {
+          if (!file.selected) {
+            file.select();
+          }
+        });
+      }
+
+      // Принудительно выбираем все кусочки для загрузки
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+
+      // Отправляем обновление
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+
+      res.json({ success: true, msg: 'Торрент перезапущен' });
+    } catch (e) {
+      console.error('Ошибка принудительного перезапуска:', e);
+      res.json({ success: false, msg: e.message });
+    }
+  }
+
   // Метод для принудительного обновления статистики пиров
   forceUpdateStats = async (req, res) => {
     try {
@@ -928,6 +1012,16 @@ class TorrentController {
         torrent.announce.forEach((tracker, index) => {
           console.log(`[Трекер ${index}] ${tracker}`);
         });
+        
+        // Принудительно обновляем трекер
+        if (torrent.tracker) {
+          try {
+            torrent.tracker.announce();
+            console.log(`[Трекер обновлен] ${torrent.name}`);
+          } catch (e) {
+            console.log(`[Ошибка трекера] ${torrent.name}:`, e.message);
+          }
+        }
       }
 
       // Принудительно подключаемся к DHT
@@ -944,6 +1038,11 @@ class TorrentController {
       if (torrent.pieces && torrent.pieces.length > 0) {
         torrent.select(0, torrent.pieces.length - 1, false);
       }
+
+      // Принудительно перезапускаем торрент для лучшего подключения
+      torrent.pause();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      torrent.resume();
 
       // Отправляем обновление
       this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
