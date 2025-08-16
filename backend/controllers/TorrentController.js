@@ -40,6 +40,13 @@ class TorrentController {
         tracker: {
           announce: [],      // Пустой список трекеров по умолчанию
           getAnnounceOpts: () => ({})
+        },
+        // Дополнительные настройки для подключения к пирам
+        wire: {
+          // Настройки для wire протокола
+          utp: true,         // Включаем uTP
+          tcp: true,         // Включаем TCP
+          maxConns: 55       // Максимальное количество соединений
         }
       });
       
@@ -248,6 +255,18 @@ class TorrentController {
       console.log(`[Трекер пир] ${torrent.name} - ${addr}`);
     });
     
+    // Событие изменения количества пиров
+    torrent.on('peer', (addr) => {
+      console.log(`[Новый пир] ${torrent.name} - ${addr}, всего: ${torrent.numPeers}`);
+      emitUpdate();
+    });
+    
+    // Событие отключения пира
+    torrent.on('peerRemove', (addr) => {
+      console.log(`[Пир отключился] ${torrent.name} - ${addr}, всего: ${torrent.numPeers}`);
+      emitUpdate();
+    });
+    
     // Принудительно запускаем торрент после настройки всех обработчиков
     setTimeout(() => {
       if (torrent.paused) {
@@ -380,7 +399,13 @@ class TorrentController {
         private: false, // Разрешаем публичные торренты
         // Дополнительные настройки для лучшего подключения
         port: 0,     // Автоматический выбор порта
-        hostname: '0.0.0.0' // Слушаем на всех интерфейсах
+        hostname: '0.0.0.0', // Слушаем на всех интерфейсах
+        // Настройки для wire протокола
+        wire: {
+          utp: true,     // Включаем uTP
+          tcp: true,     // Включаем TCP
+          maxConns: 55   // Максимальное количество соединений
+        }
       }, (added) => {
         console.log(`[Добавлен торрент] ${added.name || added.infoHash}`);
         
@@ -455,7 +480,13 @@ class TorrentController {
         private: false, // Разрешаем публичные торренты
         // Дополнительные настройки для лучшего подключения
         port: 0,     // Автоматический выбор порта
-        hostname: '0.0.0.0' // Слушаем на всех интерфейсах
+        hostname: '0.0.0.0', // Слушаем на всех интерфейсах
+        // Настройки для wire протокола
+        wire: {
+          utp: true,     // Включаем uTP
+          tcp: true,     // Включаем TCP
+          maxConns: 55   // Максимальное количество соединений
+        }
       }, (added) => {
         console.log(`[Добавлен торрент из файла] ${added.name || added.infoHash}`);
         
@@ -635,6 +666,69 @@ class TorrentController {
     }
   }
 
+  // Метод для принудительного подключения к трекерам и пирам
+  forceConnect = async (req, res) => {
+    try {
+      const { infoHash } = req.params;
+      const client = await this.getClient();
+      const torrent = client.get(infoHash);
+
+      if (!torrent) {
+        return res.json({ success: false, msg: 'Торрент не найден' });
+      }
+
+      console.log(`[Принудительное подключение] ${torrent.name || torrent.infoHash}`);
+
+      // Принудительно запускаем торрент
+      if (torrent.paused) {
+        torrent.resume();
+      }
+
+      // Принудительно подключаемся к трекерам
+      if (torrent.announce && torrent.announce.length > 0) {
+        console.log(`[Принудительное подключение к трекерам] ${torrent.name}`);
+        torrent.announce.forEach((tracker, index) => {
+          console.log(`[Трекер ${index}] ${tracker}`);
+        });
+        
+        // Принудительно обновляем трекеры
+        torrent.tracker && torrent.tracker.announce();
+      }
+
+      // Принудительно подключаемся к DHT
+      if (torrent.dht) {
+        console.log(`[Принудительное подключение к DHT] ${torrent.name}`);
+      }
+
+      // Принудительно подключаемся к локальному peer discovery
+      if (torrent.lpd) {
+        console.log(`[Принудительное подключение к LPD] ${torrent.name}`);
+      }
+
+      // Принудительно выбираем все файлы для загрузки
+      if (torrent.files && torrent.files.length > 0) {
+        torrent.files.forEach(file => {
+          if (!file.selected) {
+            file.select();
+          }
+        });
+      }
+
+      // Принудительно выбираем все кусочки для загрузки
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+
+      // Отправляем обновление
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+
+      res.json({ success: true, msg: 'Принудительное подключение запущено' });
+    } catch (e) {
+      console.error('Ошибка принудительного подключения:', e);
+      res.json({ success: false, msg: e.message });
+    }
+  }
+
   // Метод для принудительной загрузки метаданных
   forceMetadata = async (req, res) => {
     try {
@@ -785,7 +879,21 @@ class TorrentController {
         // Информация о DHT
         dht: torrent.dht ? 'enabled' : 'disabled',
         // Информация о локальном peer discovery
-        lpd: torrent.lpd ? 'enabled' : 'disabled'
+        lpd: torrent.lpd ? 'enabled' : 'disabled',
+        // Детальная информация о пирах
+        peers: {
+          total: torrent.numPeers,
+          seeds: torrent.numSeeds,
+          leeches: torrent.numLeeches,
+          connected: torrent.wires ? torrent.wires.length : 0,
+          wireAddresses: torrent.wires ? torrent.wires.map(wire => wire.peerAddress) : []
+        },
+        // Информация о трекерах
+        trackerInfo: {
+          hasTracker: !!(torrent.tracker),
+          trackerStatus: torrent.tracker ? 'active' : 'inactive',
+          lastAnnounce: torrent.tracker ? torrent.tracker.lastAnnounce : null
+        }
       };
 
       console.log(`[Диагностика] ${torrent.name || torrent.infoHash}:`, diagnosis);
