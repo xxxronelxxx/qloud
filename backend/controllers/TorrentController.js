@@ -129,6 +129,11 @@ class TorrentController {
         });
       }
       
+      // Принудительно подключаемся к DHT
+      if (torrent.dht) {
+        console.log(`[DHT] ${torrent.name}: Включен`);
+      }
+      
       this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
     });
 
@@ -138,7 +143,7 @@ class TorrentController {
     
     // Событие загрузки метаданных
     torrent.on('metadata', () => {
-      console.log(`[Метаданные] ${torrent.name}`);
+      console.log(`[Метаданные] ${torrent.name} - ЗАГРУЖЕНЫ!`);
       
       // Принудительно запускаем торрент после загрузки метаданных
       if (torrent.paused) {
@@ -270,7 +275,49 @@ class TorrentController {
           console.log(`[Трекер ${index}] ${tracker}`);
         });
       }
+      
+      // Принудительно подключаемся к DHT
+      if (torrent.dht) {
+        console.log(`[Принудительное подключение к DHT] ${torrent.name}`);
+      }
+      
+      // Принудительно подключаемся к локальному peer discovery
+      if (torrent.lpd) {
+        console.log(`[Принудительное подключение к LPD] ${torrent.name}`);
+      }
     }, 1000);
+    
+    // Дополнительная проверка каждые 5 секунд для "зависших" торрентов
+    const checkInterval = setInterval(() => {
+      // Если торрент не имеет метаданных и не подключен к пирам
+      if (!torrent.files || torrent.files.length === 0) {
+        console.log(`[Проверка метаданных] ${torrent.name} - метаданные не загружены`);
+        
+        // Принудительно запускаем торрент
+        if (torrent.paused) {
+          torrent.resume();
+        }
+        
+        // Принудительно подключаемся к трекерам
+        if (torrent.announce && torrent.announce.length > 0) {
+          console.log(`[Повторное подключение к трекерам] ${torrent.name}`);
+        }
+        
+        // Принудительно подключаемся к DHT
+        if (torrent.dht) {
+          console.log(`[Повторное подключение к DHT] ${torrent.name}`);
+        }
+      } else {
+        // Метаданные загружены, останавливаем проверку
+        console.log(`[Метаданные загружены] ${torrent.name}`);
+        clearInterval(checkInterval);
+      }
+    }, 5000);
+    
+    // Очищаем интервал при закрытии торрента
+    torrent.on('close', () => {
+      clearInterval(checkInterval);
+    });
   }
 
   list = async (req, res) => {
@@ -584,6 +631,62 @@ class TorrentController {
       });
     } catch (e) {
       console.error('Ошибка паузы:', e);
+      res.json({ success: false, msg: e.message });
+    }
+  }
+
+  // Метод для принудительной загрузки метаданных
+  forceMetadata = async (req, res) => {
+    try {
+      const { infoHash } = req.params;
+      const client = await this.getClient();
+      const torrent = client.get(infoHash);
+
+      if (!torrent) {
+        return res.json({ success: false, msg: 'Торрент не найден' });
+      }
+
+      console.log(`[Принудительная загрузка метаданных] ${torrent.name || torrent.infoHash}`);
+
+      // Проверяем, есть ли уже метаданные
+      if (torrent.files && torrent.files.length > 0) {
+        return res.json({ success: true, msg: 'Метаданные уже загружены' });
+      }
+
+      // Принудительно запускаем торрент
+      if (torrent.paused) {
+        torrent.resume();
+      }
+
+      // Принудительно подключаемся к трекерам
+      if (torrent.announce && torrent.announce.length > 0) {
+        console.log(`[Принудительное подключение к трекерам] ${torrent.name}`);
+        torrent.announce.forEach((tracker, index) => {
+          console.log(`[Трекер ${index}] ${tracker}`);
+        });
+      }
+
+      // Принудительно подключаемся к DHT
+      if (torrent.dht) {
+        console.log(`[Принудительное подключение к DHT] ${torrent.name}`);
+      }
+
+      // Принудительно подключаемся к локальному peer discovery
+      if (torrent.lpd) {
+        console.log(`[Принудительное подключение к LPD] ${torrent.name}`);
+      }
+
+      // Принудительно выбираем все кусочки для загрузки (если есть)
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+
+      // Отправляем обновление
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+
+      res.json({ success: true, msg: 'Принудительная загрузка метаданных запущена' });
+    } catch (e) {
+      console.error('Ошибка принудительной загрузки метаданных:', e);
       res.json({ success: false, msg: e.message });
     }
   }

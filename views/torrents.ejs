@@ -110,6 +110,7 @@
           <div class="d-flex gap-2">
             <button class="btn btn-outline-secondary btn-sm rounded-4" data-toggle="${t.paused ? 'resume' : 'pause'}">${t.paused ? 'Пуск' : 'Пауза'}</button>
             <button class="btn btn-outline-warning btn-sm rounded-4" data-force-start="${t.infoHash}" title="Принудительный запуск">⚡</button>
+            <button class="btn btn-outline-primary btn-sm rounded-4" data-force-metadata="${t.infoHash}" title="Принудительная загрузка метаданных">📋</button>
             <button class="btn btn-outline-success btn-sm rounded-4" data-update-trackers="${t.infoHash}" title="Обновить трекеры">🔄</button>
             <button class="btn btn-outline-info btn-sm rounded-4" data-diagnose="${t.infoHash}" title="Диагностика">🔍</button>
             <div class="btn-group">
@@ -235,6 +236,30 @@
           alert('Ошибка сети при обновлении трекеров');
         }
       };
+      
+      // Обработчик для кнопки принудительной загрузки метаданных
+      const forceMetadataBtn = el.querySelector('[data-force-metadata]');
+      forceMetadataBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-metadata`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Принудительная загрузка метаданных запущена');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '📋 Загрузка метаданных...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+          } else {
+            console.error('Ошибка принудительной загрузки метаданных:', result.msg);
+            alert('Ошибка принудительной загрузки метаданных: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при принудительной загрузке метаданных:', error);
+          alert('Ошибка сети при принудительной загрузке метаданных');
+        }
+      };
     }
     
     // Обновляем содержимое элемента
@@ -330,6 +355,18 @@
       if (t.paused) {
         statusText = '⏸️ Торрент на паузе';
         statusClass = 'text-warning';
+      } else if (!t.files || t.files.length === 0) {
+        // Торрент без метаданных
+        if (t.numPeers === 0) {
+          statusText = '🔍 Поиск пиров для загрузки метаданных...';
+          statusClass = 'text-info';
+        } else if (t.numPeers > 0) {
+          statusText = `📥 Подключение к ${t.numPeers} пирам для загрузки метаданных...`;
+          statusClass = 'text-primary';
+        } else {
+          statusText = '📋 Ожидание метаданных...';
+          statusClass = 'text-warning';
+        }
       } else if (t.progress === 0 && t.numPeers === 0) {
         statusText = '🔍 Поиск пиров...';
         statusClass = 'text-info';
@@ -423,6 +460,18 @@
               const statusEl = torrentEl.querySelector('[data-status]');
               if (statusEl) {
                 statusEl.innerHTML = '⚠️ Торрент не прогрессирует - <button class="btn btn-warning btn-sm" onclick="forceStartTorrent(\'' + torrent.infoHash + '\')">Принудительный запуск</button>';
+                statusEl.className = 'mt-1 small text-warning';
+              }
+            }
+          }
+          
+          // Если торрент без метаданных более 1 минуты, предлагаем принудительную загрузку
+          if ((!torrent.files || torrent.files.length === 0) && !torrent.paused) {
+            const torrentEl = document.getElementById('t_' + torrent.infoHash);
+            if (torrentEl) {
+              const statusEl = torrentEl.querySelector('[data-status]');
+              if (statusEl && statusEl.textContent.includes('Ожидание метаданных')) {
+                statusEl.innerHTML = '⚠️ Метаданные не загружаются - <button class="btn btn-primary btn-sm" onclick="forceMetadataTorrent(\'' + torrent.infoHash + '\')">Принудительная загрузка</button>';
                 statusEl.className = 'mt-1 small text-warning';
               }
             }
@@ -794,6 +843,31 @@
     } catch (error) {
       console.error('Ошибка сети при принудительном запуске:', error);
       alert('Ошибка сети при принудительном запуске');
+    }
+  }
+  
+  async function forceMetadataTorrent(infoHash) {
+    try {
+      const response = await fetch(`/torrents/api/${infoHash}/force-metadata`, { method:'POST' });
+      const result = await response.json();
+      if (result.success) {
+        console.log('Принудительная загрузка метаданных запущена');
+        // Обновляем статус
+        const torrentEl = document.getElementById('t_' + infoHash);
+        if (torrentEl) {
+          const statusEl = torrentEl.querySelector('[data-status]');
+          if (statusEl) {
+            statusEl.textContent = '📋 Принудительная загрузка метаданных...';
+            statusEl.className = 'mt-1 small text-info';
+          }
+        }
+      } else {
+        console.error('Ошибка принудительной загрузки метаданных:', result.msg);
+        alert('Ошибка принудительной загрузки метаданных: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при принудительной загрузке метаданных:', error);
+      alert('Ошибка сети при принудительной загрузке метаданных');
     }
   }
 </script>
