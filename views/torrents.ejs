@@ -98,6 +98,8 @@
   function renderItem(t) {
     const id = 't_'+t.infoHash;
     let el = document.getElementById(id);
+    
+    // Если элемент не существует, создаем его
     if (!el) {
       el = document.createElement('div');
       el.id = id;
@@ -125,12 +127,17 @@
         </div>
         <div class="mt-2 d-flex flex-wrap gap-2" data-files></div>
       `;
+      
+      // Добавляем в список
       listEl.appendChild(el);
+      
+      // Добавляем обработчики событий
       el.querySelector('[data-remove]').onclick = async () => {
         const r = await fetch(`/torrents/api/${t.infoHash}`,{method:'DELETE'});
         const d = await r.json().catch(()=>({}));
         if (d && d.success) el.remove();
       };
+      
       const removeFilesBtn = el.querySelector('[data-remove-files]');
       removeFilesBtn.onclick = async () => {
         if (!confirm('Удалить торрент и все скачанные данные?')) return;
@@ -138,6 +145,7 @@
         const d = await r.json().catch(()=>({}));
         if (d && d.success) el.remove();
       };
+      
       const toggleBtn = el.querySelector('[data-toggle]');
       toggleBtn.onclick = async () => {
         const action = toggleBtn.getAttribute('data-toggle');
@@ -148,6 +156,8 @@
         }
       };
     }
+    
+    // Обновляем содержимое элемента
     const bar = el.querySelector('.progress-bar');
     const prog = el.querySelector('[data-prog]');
     const down = el.querySelector('[data-down]');
@@ -157,60 +167,150 @@
     const p = el.querySelector('[data-p]');
     const files = el.querySelector('[data-files]');
     const toggleBtn = el.querySelector('[data-toggle]');
+    const nameEl = el.querySelector('.fw-medium');
+    
+    // Обновляем название
+    if (nameEl) {
+      const displayName = t.name || 'Загрузка метаданных...';
+      nameEl.textContent = displayName;
+      nameEl.title = displayName;
+      
+      // Добавляем индикатор загрузки метаданных
+      if (displayName.includes('Загрузка метаданных')) {
+        nameEl.classList.add('text-muted');
+        nameEl.classList.add('fst-italic');
+      } else {
+        nameEl.classList.remove('text-muted');
+        nameEl.classList.remove('fst-italic');
+      }
+    }
+    
+    // Обновляем кнопку пауза/пуск
     if (toggleBtn) {
       const paused = !!t.paused;
       toggleBtn.textContent = paused ? 'Пуск' : 'Пауза';
       toggleBtn.setAttribute('data-toggle', paused ? 'resume' : 'pause');
     }
 
-    bar.style.width = (t.progress||0)+"%";
-    prog.textContent = t.progress||0;
-    down.textContent = fmtSize(t.downloaded||0);
-    len.textContent = fmtSize(t.length||0);
-    ds.textContent = fmtSize(t.downloadSpeed||0);
-    us.textContent = fmtSize(t.uploadSpeed||0);
-    p.textContent = t.numPeers||0;
+    // Обновляем прогресс
+    if (bar) {
+      const progress = t.progress || 0;
+      bar.style.width = progress + "%";
+      
+      // Добавляем анимацию для загрузки метаданных
+      if (progress === 0 && t.name && t.name.includes('Загрузка метаданных')) {
+        bar.classList.add('progress-bar-animated');
+      } else {
+        bar.classList.remove('progress-bar-animated');
+      }
+    }
+    
+    if (prog) prog.textContent = t.progress || 0;
+    if (down) down.textContent = fmtSize(t.downloaded || 0);
+    if (len) len.textContent = fmtSize(t.length || 0);
+    if (ds) ds.textContent = fmtSize(t.downloadSpeed || 0);
+    if (us) us.textContent = fmtSize(t.uploadSpeed || 0);
+    if (p) p.textContent = t.numPeers || 0;
 
-    if (files) files.innerHTML = '';
-    if (!t.files || !t.files.length) {
-      const span = document.createElement('span');
-      span.className = 'text-muted small';
-      span.textContent = 'Файлы не загружены (идёт получение метаданных)';
-      files?.appendChild(span);
-    } else if (files) {
-      t.files.forEach(f => {
-        const playMime = ['video/mp4','video/webm','audio/mpeg','audio/mp3','audio/aac','audio/ogg'];
-        const btn = document.createElement('a');
-        btn.className = 'btn btn-outline-primary btn-sm rounded-4';
-        btn.textContent = f.name;
-        const canPlay = playMime.includes(f.mime);
-        btn.href = canPlay ? `/torrents/stream/${t.infoHash}/${f.index}` : '#';
-        btn.target = canPlay ? '_blank' : '';
-        if (!canPlay) btn.classList.add('disabled');
-        files.appendChild(btn);
-      });
+    // Обновляем файлы
+    if (files) {
+      files.innerHTML = '';
+      if (!t.files || !t.files.length) {
+        const span = document.createElement('span');
+        span.className = 'text-muted small';
+        // Проверяем, есть ли метаданные
+        if (t.name && t.name.includes('Загрузка метаданных')) {
+          span.textContent = 'Файлы не загружены (идёт получение метаданных)';
+          span.classList.add('fst-italic');
+        } else {
+          span.textContent = 'Файлы не найдены';
+        }
+        files.appendChild(span);
+      } else {
+        t.files.forEach(f => {
+          const playMime = ['video/mp4','video/webm','audio/mpeg','audio/mp3','audio/aac','audio/ogg'];
+          const btn = document.createElement('a');
+          btn.className = 'btn btn-outline-primary btn-sm rounded-4';
+          btn.textContent = f.name;
+          const canPlay = playMime.includes(f.mime);
+          btn.href = canPlay ? `/torrents/stream/${t.infoHash}/${f.index}` : '#';
+          btn.target = canPlay ? '_blank' : '';
+          if (!canPlay) btn.classList.add('disabled');
+          files.appendChild(btn);
+        });
+      }
     }
   }
 
-  socket.on('torrent:add', renderItem);
-  socket.on('torrent:update', renderItem);
+  // Обработка событий сокетов
+  socket.on('torrent:add', (torrent) => {
+    console.log('Добавлен новый торрент:', torrent);
+    renderItem(torrent);
+  });
+  
+  socket.on('torrent:update', (torrent) => {
+    console.log('Обновление торрента:', torrent);
+    renderItem(torrent);
+  });
+  
   socket.on('torrent:remove', ({infoHash}) => {
+    console.log('Удален торрент:', infoHash);
     const el = document.getElementById('t_'+infoHash);
     if (el) el.remove();
   });
 
+  // Загружаем существующие торренты при загрузке страницы
   (async () => {
-    const res = await fetch('/torrents/api/list');
-    const data = await res.json();
-    if (data && data.items) data.items.forEach(renderItem);
+    try {
+      const res = await fetch('/torrents/api/list');
+      const data = await res.json();
+      if (data && data.items) {
+        console.log('Загружено торрентов:', data.items.length);
+        data.items.forEach(renderItem);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки списка торрентов:', error);
+    }
   })();
+
+  // Периодическое обновление статуса торрентов (каждые 2 секунды)
+  setInterval(async () => {
+    try {
+      const res = await fetch('/torrents/api/list');
+      const data = await res.json();
+      if (data && data.items) {
+        data.items.forEach(renderItem);
+      }
+    } catch (error) {
+      // Игнорируем ошибки при периодическом обновлении
+    }
+  }, 2000);
 
   document.getElementById('magnetForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const val = document.getElementById('magnetInput').value.trim();
     if (!val) return;
-    await fetch('/torrents/api/add-magnet', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ magnet: val }) });
-    document.getElementById('magnetInput').value = '';
+    
+    try {
+      const response = await fetch('/torrents/api/add-magnet', { 
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ magnet: val }) 
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('Торрент добавлен:', result.infoHash);
+        // Очищаем поле ввода
+        document.getElementById('magnetInput').value = '';
+      } else {
+        console.error('Ошибка добавления торрента:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при добавлении торрента:', error);
+      alert('Ошибка сети при добавлении торрента');
+    }
   });
 
   const dz = document.getElementById('dropZone');
@@ -223,17 +323,47 @@
     dz.classList.remove('bg-body-tertiary');
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    const fd = new FormData();
-    fd.append('torrent', file);
-    await fetch('/torrents/api/add-file', { method:'POST', body: fd });
+    
+    try {
+      const fd = new FormData();
+      fd.append('torrent', file);
+      const response = await fetch('/torrents/api/add-file', { method:'POST', body: fd });
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('Торрент из файла добавлен:', result.infoHash);
+      } else {
+        console.error('Ошибка добавления торрента из файла:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при добавлении торрента из файла:', error);
+      alert('Ошибка сети при добавлении торрента');
+    }
   });
-  fi.addEventListener('change', async () => {
-    const file = fi.files[0];
+  
+  fi.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
     if (!file) return;
-    const fd = new FormData();
-    fd.append('torrent', file);
-    await fetch('/torrents/api/add-file', { method:'POST', body: fd });
-    fi.value = '';
+    
+    try {
+      const fd = new FormData();
+      fd.append('torrent', file);
+      const response = await fetch('/torrents/api/add-file', { method:'POST', body: fd });
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('Торрент из файла добавлен:', result.infoHash);
+        // Очищаем поле файла
+        fi.value = '';
+      } else {
+        console.error('Ошибка добавления торрента из файла:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при добавлении торрента из файла:', error);
+      alert('Ошибка сети при добавлении торрента');
+    }
   });
 
   // YTS поиск
@@ -417,12 +547,20 @@
 
   async function addTorrentMagnet(magnetLink) {
     try {
-      await fetch('/torrents/api/add-magnet', {
+      const response = await fetch('/torrents/api/add-magnet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ magnet: magnetLink })
       });
-      alert('Торрент добавлен в загрузки!');
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('YTS торрент добавлен:', result.infoHash);
+        alert('Торрент добавлен в загрузки!');
+      } else {
+        console.error('Ошибка добавления YTS торрента:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
     } catch (error) {
       console.error('Add torrent error:', error);
       alert('Ошибка добавления торрента');
@@ -436,17 +574,52 @@
 
       if (data.success && data.info && data.info.torrents && data.info.torrents.length > 0) {
         const bestTorrent = data.info.torrents[0]; // Первый торрент (сортированный по сидам)
-        await fetch('/torrents/api/add-magnet', {
+        const response = await fetch('/torrents/api/add-magnet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ magnet: bestTorrent.link })
         });
-        alert(`Добавлен лучший торрент: ${bestTorrent.title.substring(0, 50)}...`);
+        
+        const result = await response.json();
+        if (result.success) {
+          console.log('Лучший торрент добавлен:', result.infoHash);
+          alert(`Добавлен лучший торрент: ${bestTorrent.title.substring(0, 50)}...`);
+        } else {
+          console.error('Ошибка добавления лучшего торрента:', result.msg);
+          alert('Ошибка добавления торрента: ' + result.msg);
+        }
       } else {
         alert('Торренты не найдены');
       }
     } catch (error) {
       console.error('Add best torrent error:', error);
+      alert('Ошибка добавления торрента');
+    }
+  }
+
+  async function addYtsMagnet(hash) {
+    try {
+      // Для YTS нужно создать magnet ссылку из hash
+      const magnetLink = `magnet:?xt=urn:btih:${hash}`;
+      const response = await fetch('/torrents/api/add-magnet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ magnet: magnetLink })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('YTS торрент добавлен:', result.infoHash);
+        alert('Торрент добавлен в загрузки!');
+        // Закрываем модальное окно
+        const modal = bootstrap.Modal.getInstance(document.getElementById('ytsDetailsModal'));
+        if (modal) modal.hide();
+      } else {
+        console.error('Ошибка добавления YTS торрента:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Add YTS torrent error:', error);
       alert('Ошибка добавления торрента');
     }
   }

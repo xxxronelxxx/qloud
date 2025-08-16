@@ -27,24 +27,38 @@ class TorrentController {
 
   serializeTorrent(t) {
     const isPaused = this.pausedTorrents.has(t.infoHash);
+    
+    // Проверяем, загружены ли метаданные
+    // Метаданные загружены, если есть файлы и имя торрента
+    const hasMetadata = t.files && t.files.length > 0 && t.name && !t.name.includes('Загрузка метаданных');
+    
+    // Определяем отображаемое имя
+    let displayName = 'Загрузка метаданных...';
+    if (t.name && !t.name.includes('Загрузка метаданных')) {
+      displayName = t.name;
+    } else if (t.infoHash) {
+      displayName = `Загрузка метаданных... (${t.infoHash.substring(0, 8)}...)`;
+    }
+    
     return {
       infoHash: t.infoHash,
-      name: t.name || 'Загрузка метаданных…',
+      name: displayName,
       progress: Math.round((t.progress || 0) * 100),
-      downloaded: t.downloaded,
-      length: t.length,
-      downloadSpeed: t.downloadSpeed,
-      uploadSpeed: t.uploadSpeed,
-      timeRemaining: t.timeRemaining,
-      numPeers: t.numPeers,
+      downloaded: t.downloaded || 0,
+      length: t.length || 0,
+      downloadSpeed: t.downloadSpeed || 0,
+      uploadSpeed: t.uploadSpeed || 0,
+      timeRemaining: t.timeRemaining || 0,
+      numPeers: t.numPeers || 0,
       paused: isPaused,
-      files: (t.files || []).map((f, idx) => ({
+      files: hasMetadata ? (t.files || []).map((f, idx) => ({
         index: idx,
         name: f.name,
         length: f.length,
         mime: mime.lookup(f.name) || 'application/octet-stream'
-      })),
+      })) : [],
       path: t.path,
+      hasMetadata: hasMetadata
     };
   }
 
@@ -53,15 +67,52 @@ class TorrentController {
       this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
     };
 
+    // Событие при добавлении торрента
+    torrent.on('infoHash', () => {
+      console.log(`[Добавлен] ${torrent.name || torrent.infoHash}`);
+      this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
+    });
+
+    // События прогресса
     torrent.on('download', emitUpdate);
     torrent.on('upload', emitUpdate);
+    
+    // Событие загрузки метаданных
+    torrent.on('metadata', () => {
+      console.log(`[Метаданные] ${torrent.name}`);
+      // При загрузке метаданных отправляем обновление
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+    });
+    
+    // Событие готовности торрента
+    torrent.on('ready', () => {
+      console.log(`[Готов] ${torrent.name}`);
+      // При готовности торрента отправляем обновление
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+    });
+    
+    // Событие завершения загрузки
     torrent.on('done', () => {
-      console.log(`[Готово] ${torrent.name}`);
+      console.log(`[Завершено] ${torrent.name}`);
       emitUpdate();
     });
-    torrent.on('wire', emitUpdate);
-    torrent.on('metadata', emitUpdate);
-    torrent.on('ready', emitUpdate);
+    
+    // Событие ошибки
+    torrent.on('error', (err) => {
+      console.error(`[Ошибка] ${torrent.name}:`, err.message);
+      emitUpdate();
+    });
+    
+    // Событие удаления
+    torrent.on('close', () => {
+      console.log(`[Закрыт] ${torrent.name}`);
+    });
+    
+    // Событие подключения к пирам
+    torrent.on('wire', (wire) => {
+      console.log(`[Подключение] ${torrent.name} - peers: ${torrent.numPeers}`);
+      emitUpdate();
+    });
   }
 
   list = async (req, res) => {
@@ -80,8 +131,15 @@ class TorrentController {
       }
 
       const client = await this.getClient();
-      const torrent = client.add(magnet, { path: this.downloadDir }, added => {
+      
+      // Добавляем торрент
+      const torrent = client.add(magnet, { path: this.downloadDir }, (added) => {
+        console.log(`[Добавлен торрент] ${added.name || added.infoHash}`);
+        
+        // Настраиваем обработчики событий
         this.wireTorrent(added);
+        
+        // Убираем из паузы если был там
         this.pausedTorrents.delete(added.infoHash);
 
         // Сохраняем источник для будущего возобновления
@@ -90,11 +148,33 @@ class TorrentController {
           data: magnet
         });
 
+        // Отправляем событие добавления
         this.io && this.io.emit('torrent:add', this.serializeTorrent(added));
       });
 
+      // Если торрент уже добавлен (например, если это повторное добавление)
+      if (torrent.infoHash) {
+        console.log(`[Торрент уже добавлен] ${torrent.name || torrent.infoHash}`);
+        
+        // Настраиваем обработчики событий
+        this.wireTorrent(torrent);
+        
+        // Убираем из паузы если был там
+        this.pausedTorrents.delete(torrent.infoHash);
+
+        // Сохраняем источник для будущего возобновления
+        this.torrentSources.set(torrent.infoHash, {
+          type: 'magnet',
+          data: magnet
+        });
+
+        // Отправляем событие добавления
+        this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
+      }
+
       return res.json({ success: true, infoHash: torrent.infoHash });
     } catch (e) {
+      console.error('Ошибка добавления magnet:', e);
       return res.json({ success: false, msg: e.message });
     }
   }
@@ -107,8 +187,15 @@ class TorrentController {
       }
 
       const client = await this.getClient();
-      const torrent = client.add(file.buffer, { path: this.downloadDir }, added => {
+      
+      // Добавляем торрент
+      const torrent = client.add(file.buffer, { path: this.downloadDir }, (added) => {
+        console.log(`[Добавлен торрент из файла] ${added.name || added.infoHash}`);
+        
+        // Настраиваем обработчики событий
         this.wireTorrent(added);
+        
+        // Убираем из паузы если был там
         this.pausedTorrents.delete(added.infoHash);
 
         // Сохраняем буфер .torrent файла
@@ -117,11 +204,33 @@ class TorrentController {
           data: file.buffer
         });
 
+        // Отправляем событие добавления
         this.io && this.io.emit('torrent:add', this.serializeTorrent(added));
       });
 
+      // Если торрент уже добавлен
+      if (torrent.infoHash) {
+        console.log(`[Торрент из файла уже добавлен] ${torrent.name || torrent.infoHash}`);
+        
+        // Настраиваем обработчики событий
+        this.wireTorrent(torrent);
+        
+        // Убираем из паузы если был там
+        this.pausedTorrents.delete(torrent.infoHash);
+
+        // Сохраняем буфер .torrent файла
+        this.torrentSources.set(torrent.infoHash, {
+          type: 'buffer',
+          data: file.buffer
+        });
+
+        // Отправляем событие добавления
+        this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
+      }
+
       return res.json({ success: true, infoHash: torrent.infoHash });
     } catch (e) {
+      console.error('Ошибка добавления файла:', e);
       return res.json({ success: false, msg: e.message });
     }
   }
