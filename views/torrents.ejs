@@ -110,6 +110,7 @@
           <div class="d-flex gap-2">
             <button class="btn btn-outline-secondary btn-sm rounded-4" data-toggle="${t.paused ? 'resume' : 'pause'}">${t.paused ? 'Пуск' : 'Пауза'}</button>
             <button class="btn btn-outline-warning btn-sm rounded-4" data-force-start="${t.infoHash}" title="Принудительный запуск">⚡</button>
+            <button class="btn btn-outline-success btn-sm rounded-4" data-update-trackers="${t.infoHash}" title="Обновить трекеры">🔄</button>
             <button class="btn btn-outline-info btn-sm rounded-4" data-diagnose="${t.infoHash}" title="Диагностика">🔍</button>
             <div class="btn-group">
               <button class="btn btn-outline-danger btn-sm rounded-4" data-remove="${t.infoHash}">Удалить</button>
@@ -197,6 +198,9 @@
 - Выбранные файлы: ${result.diagnosis.selectedFiles}
 - Куски: ${result.diagnosis.piecesCount}
 - Выбранные куски: ${result.diagnosis.selectedPieces}
+- DHT: ${result.diagnosis.dht}
+- LPD: ${result.diagnosis.lpd}
+- Трекеры: ${result.diagnosis.trackers.length > 0 ? result.diagnosis.trackers.map(t => t.url).join(', ') : 'Нет'}
 - Ошибка: ${result.diagnosis.error || 'Нет'}
             `;
             alert(diagnosisText);
@@ -205,6 +209,30 @@
           }
         } catch (error) {
           console.error('Ошибка сети при диагностике:', error);
+        }
+      };
+      
+      // Обработчик для кнопки обновления трекеров
+      const updateTrackersBtn = el.querySelector('[data-update-trackers]');
+      updateTrackersBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/update-trackers`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Трекеры обновлены');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '🔄 Трекеры обновлены...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+          } else {
+            console.error('Ошибка обновления трекеров:', result.msg);
+            alert('Ошибка обновления трекеров: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при обновлении трекеров:', error);
+          alert('Ошибка сети при обновлении трекеров');
         }
       };
     }

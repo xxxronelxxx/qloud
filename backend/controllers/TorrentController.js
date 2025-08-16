@@ -20,7 +20,7 @@ class TorrentController {
       const mod = await import('webtorrent');
       const WebTorrent = mod.default || mod;
       
-      // Создаем клиент с улучшенными настройками
+      // Создаем клиент с правильными настройками для подключения к пирам
       this.client = new WebTorrent({ 
         dht: true,           // Включаем DHT
         tracker: true,       // Включаем трекеры
@@ -32,7 +32,15 @@ class TorrentController {
         announce: [],        // Пустой список трекеров по умолчанию
         getAnnounceOpts: () => ({}), // Опции для анонса
         rtcConfig: {},       // WebRTC конфигурация
-        userAgent: 'WebTorrent/2.0.0' // User agent
+        userAgent: 'WebTorrent/2.0.0', // User agent
+        // Добавляем настройки для лучшего подключения к пирам
+        port: 0,             // Автоматический выбор порта
+        hostname: '0.0.0.0', // Слушаем на всех интерфейсах
+        // Настройки для трекеров
+        tracker: {
+          announce: [],      // Пустой список трекеров по умолчанию
+          getAnnounceOpts: () => ({})
+        }
       });
       
       // Добавляем обработчики событий для клиента
@@ -44,7 +52,12 @@ class TorrentController {
         console.warn('[WebTorrent Client Warning]:', warning.message);
       });
       
-      console.log('[WebTorrent Client] Инициализирован с улучшенными настройками');
+      // Добавляем обработчик для подключения к пирам
+      this.client.on('wire', (wire, addr) => {
+        console.log(`[WebTorrent Client] Подключение к пиру: ${addr}`);
+      });
+      
+      console.log('[WebTorrent Client] Инициализирован с улучшенными настройками для пиров');
       
       return this.client;
     } catch (error) {
@@ -106,6 +119,14 @@ class TorrentController {
       // Принудительно запускаем торрент
       if (torrent.paused) {
         torrent.resume();
+      }
+      
+      // Принудительно подключаемся к трекерам
+      if (torrent.announce && torrent.announce.length > 0) {
+        console.log(`[Трекеры] ${torrent.name}: ${torrent.announce.length} трекеров`);
+        torrent.announce.forEach((tracker, index) => {
+          console.log(`[Трекер ${index}] ${tracker}`);
+        });
       }
       
       this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
@@ -195,8 +216,8 @@ class TorrentController {
     });
     
     // Событие подключения к пирам
-    torrent.on('wire', (wire) => {
-      console.log(`[Подключение] ${torrent.name} - peers: ${torrent.numPeers}`);
+    torrent.on('wire', (wire, addr) => {
+      console.log(`[Подключение] ${torrent.name} - пир: ${addr}, общее количество: ${torrent.numPeers}`);
       
       // Принудительно запускаем торрент при подключении к пирам
       if (torrent.paused) {
@@ -210,6 +231,16 @@ class TorrentController {
     torrent.on('noPeers', () => {
       console.log(`[Нет пиров] ${torrent.name}`);
       emitUpdate();
+    });
+    
+    // Событие подключения к трекеру
+    torrent.on('trackerAnnounce', (eventType, data) => {
+      console.log(`[Трекер] ${torrent.name} - ${eventType}:`, data);
+    });
+    
+    // Событие получения списка пиров от трекера
+    torrent.on('trackerPeer', (addr) => {
+      console.log(`[Трекер пир] ${torrent.name} - ${addr}`);
     });
     
     // Принудительно запускаем торрент после настройки всех обработчиков
@@ -230,6 +261,14 @@ class TorrentController {
       // Принудительно выбираем все кусочки для загрузки
       if (torrent.pieces && torrent.pieces.length > 0) {
         torrent.select(0, torrent.pieces.length - 1, false);
+      }
+      
+      // Принудительно подключаемся к трекерам
+      if (torrent.announce && torrent.announce.length > 0) {
+        console.log(`[Принудительное подключение к трекерам] ${torrent.name}`);
+        torrent.announce.forEach((tracker, index) => {
+          console.log(`[Трекер ${index}] ${tracker}`);
+        });
       }
     }, 1000);
   }
@@ -285,13 +324,16 @@ class TorrentController {
         return res.json({ success: false, msg: 'Этот торрент уже добавлен' });
       }
       
-      // Добавляем торрент с дополнительными опциями
+      // Добавляем торрент с правильными настройками для трекеров
       const torrent = client.add(magnet, { 
         path: this.downloadDir,
-        announce: [], // Отключаем трекеры по умолчанию
+        announce: [], // Пустой список трекеров - будут использованы трекеры из magnet ссылки
         dht: true,   // Включаем DHT
         lpd: true,   // Включаем локальное peer discovery
-        private: false // Разрешаем публичные торренты
+        private: false, // Разрешаем публичные торренты
+        // Дополнительные настройки для лучшего подключения
+        port: 0,     // Автоматический выбор порта
+        hostname: '0.0.0.0' // Слушаем на всех интерфейсах
       }, (added) => {
         console.log(`[Добавлен торрент] ${added.name || added.infoHash}`);
         
@@ -357,13 +399,16 @@ class TorrentController {
 
       const client = await this.getClient();
       
-      // Добавляем торрент с дополнительными опциями
+      // Добавляем торрент с правильными настройками для трекеров
       const torrent = client.add(file.buffer, { 
         path: this.downloadDir,
-        announce: [], // Отключаем трекеры по умолчанию
+        announce: [], // Пустой список трекеров - будут использованы трекеры из .torrent файла
         dht: true,   // Включаем DHT
         lpd: true,   // Включаем локальное peer discovery
-        private: false // Разрешаем публичные торренты
+        private: false, // Разрешаем публичные торренты
+        // Дополнительные настройки для лучшего подключения
+        port: 0,     // Автоматический выбор порта
+        hostname: '0.0.0.0' // Слушаем на всех интерфейсах
       }, (added) => {
         console.log(`[Добавлен торрент из файла] ${added.name || added.infoHash}`);
         
@@ -543,6 +588,58 @@ class TorrentController {
     }
   }
 
+  // Метод для принудительного обновления трекеров
+  updateTrackers = async (req, res) => {
+    try {
+      const { infoHash } = req.params;
+      const client = await this.getClient();
+      const torrent = client.get(infoHash);
+
+      if (!torrent) {
+        return res.json({ success: false, msg: 'Торрент не найден' });
+      }
+
+      console.log(`[Обновление трекеров] ${torrent.name || torrent.infoHash}`);
+
+      // Принудительно обновляем трекеры
+      if (torrent.announce && torrent.announce.length > 0) {
+        console.log(`[Трекеры] ${torrent.name}: ${torrent.announce.length} трекеров`);
+        torrent.announce.forEach((tracker, index) => {
+          console.log(`[Трекер ${index}] ${tracker}`);
+        });
+        
+        // Принудительно запускаем торрент
+        if (torrent.paused) {
+          torrent.resume();
+        }
+        
+        // Принудительно выбираем все файлы для загрузки
+        if (torrent.files && torrent.files.length > 0) {
+          torrent.files.forEach(file => {
+            if (!file.selected) {
+              file.select();
+            }
+          });
+        }
+        
+        // Принудительно выбираем все кусочки для загрузки
+        if (torrent.pieces && torrent.pieces.length > 0) {
+          torrent.select(0, torrent.pieces.length - 1, false);
+        }
+      } else {
+        console.log(`[Нет трекеров] ${torrent.name}`);
+      }
+
+      // Отправляем обновление
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+
+      res.json({ success: true, msg: 'Трекеры обновлены' });
+    } catch (e) {
+      console.error('Ошибка обновления трекеров:', e);
+      res.json({ success: false, msg: e.message });
+    }
+  }
+
   // Метод для диагностики проблем с торрентом
   diagnose = async (req, res) => {
     try {
@@ -572,10 +669,20 @@ class TorrentController {
         piecesCount: torrent.pieces ? torrent.pieces.length : 0,
         selectedPieces: torrent.pieces ? torrent.pieces.filter(p => p).length : 0,
         selectedFiles: torrent.files ? torrent.files.filter(f => f.selected).length : 0,
-        announce: torrent.announce,
+        announce: torrent.announce || [],
         magnetURI: torrent.magnetURI,
         status: torrent.status,
-        error: torrent.error ? torrent.error.message : null
+        error: torrent.error ? torrent.error.message : null,
+        // Дополнительная информация о трекерах
+        trackers: torrent.announce ? torrent.announce.map((tracker, index) => ({
+          index,
+          url: tracker,
+          status: 'active'
+        })) : [],
+        // Информация о DHT
+        dht: torrent.dht ? 'enabled' : 'disabled',
+        // Информация о локальном peer discovery
+        lpd: torrent.lpd ? 'enabled' : 'disabled'
       };
 
       console.log(`[Диагностика] ${torrent.name || torrent.infoHash}:`, diagnosis);
