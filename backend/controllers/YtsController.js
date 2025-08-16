@@ -242,50 +242,65 @@ class YtsController {
   async searchTorrents(film) {
     try {
       console.log(`[TORRENT] Поиск торрентов для: ${film.name || film.alternativeName || film.enName}`);
+      console.log(`[TORRENT] Kinopoisk ID: ${film.id}`);
       
-      // Формируем поисковые запросы, исключая null значения
-      const searchQueries = [];
-      
-      if (film.name) {
-        searchQueries.push(film.name);
-        if (film.year) {
-          searchQueries.push(`${film.name} ${film.year}`);
-        }
-      }
-      
-      if (film.alternativeName && film.alternativeName !== film.name) {
-        searchQueries.push(film.alternativeName);
-        if (film.year) {
-          searchQueries.push(`${film.alternativeName} ${film.year}`);
-        }
-      }
-      
-      if (film.enName && film.enName !== film.name && film.enName !== film.alternativeName) {
-        searchQueries.push(film.enName);
-        if (film.year) {
-          searchQueries.push(`${film.enName} ${film.year}`);
-        }
-      }
-
-      console.log(`[TORRENT] Поисковые запросы:`, searchQueries);
-
       const allTorrents = [];
 
-      for (const query of searchQueries) {
-        try {
-          console.log(`[TORRENT] Поиск для запроса: "${query}"`);
-          
-          // Поиск на Rutor
-          const rutorTorrents = await this.searchRutor(query);
-          allTorrents.push(...rutorTorrents);
+      // Поиск по Kinopoisk ID (основной метод)
+      try {
+        console.log(`[TORRENT] Поиск по Kinopoisk ID: ${film.id}`);
+        const jacredTorrents = await this.searchJacred(film.id);
+        allTorrents.push(...jacredTorrents);
+      } catch (error) {
+        console.log(`[TORRENT] Ошибка поиска по Kinopoisk ID:`, error.message);
+      }
 
-          // Поиск на Nyaa (для аниме)
-          if (film.genres?.some(g => g.name.toLowerCase().includes('аниме'))) {
-            const nyaaTorrents = await this.searchNyaa(query);
-            allTorrents.push(...nyaaTorrents);
+      // Если не найдено по ID, ищем по названию
+      if (allTorrents.length === 0) {
+        console.log(`[TORRENT] Поиск по названию...`);
+        
+        // Формируем поисковые запросы, исключая null значения
+        const searchQueries = [];
+        
+        if (film.name) {
+          searchQueries.push(film.name);
+          if (film.year) {
+            searchQueries.push(`${film.name} ${film.year}`);
           }
-        } catch (error) {
-          console.log(`[TORRENT] Ошибка поиска для "${query}":`, error.message);
+        }
+        
+        if (film.alternativeName && film.alternativeName !== film.name) {
+          searchQueries.push(film.alternativeName);
+          if (film.year) {
+            searchQueries.push(`${film.alternativeName} ${film.year}`);
+          }
+        }
+        
+        if (film.enName && film.enName !== film.name && film.enName !== film.alternativeName) {
+          searchQueries.push(film.enName);
+          if (film.year) {
+            searchQueries.push(`${film.enName} ${film.year}`);
+          }
+        }
+
+        console.log(`[TORRENT] Поисковые запросы:`, searchQueries);
+
+        for (const query of searchQueries) {
+          try {
+            console.log(`[TORRENT] Поиск для запроса: "${query}"`);
+            
+            // Поиск на Jacred по названию
+            const jacredTorrents = await this.searchJacredByName(query);
+            allTorrents.push(...jacredTorrents);
+
+            // Поиск на Nyaa (для аниме)
+            if (film.genres?.some(g => g.name.toLowerCase().includes('аниме'))) {
+              const nyaaTorrents = await this.searchNyaa(query);
+              allTorrents.push(...nyaaTorrents);
+            }
+          } catch (error) {
+            console.log(`[TORRENT] Ошибка поиска для "${query}":`, error.message);
+          }
         }
       }
 
@@ -300,145 +315,101 @@ class YtsController {
     }
   }
 
-  // Поиск на Rutor
-  async searchRutor(query) {
+  // Поиск на Jacred по Kinopoisk ID
+  async searchJacred(kinopoiskId) {
     try {
-      console.log(`[RUTOR] Поиск: "${query}"`);
-      const searchURL = 'http://rutor.info/search/' + encodeURIComponent(query);
-      console.log(`[RUTOR] URL: ${searchURL}`);
+      console.log(`[JACRED] Поиск по Kinopoisk ID: ${kinopoiskId}`);
+      const searchURL = `https://jacred.xyz/api/v1.0/torrents?search=kp${kinopoiskId}&exact=true`;
+      console.log(`[JACRED] URL: ${searchURL}`);
       
       const response = await axios.get(searchURL, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
-          'Accept-Encoding': 'gzip, deflate',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1'
+          'Accept': 'application/json',
+          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3'
         },
-        timeout: 30000, // Увеличиваем таймаут до 30 секунд
-        httpsAgent: this.httpsAgent,
-        maxRedirects: 5
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
       });
 
-      console.log(`[RUTOR] Ответ получен, статус: ${response.status}`);
-      console.log(`[RUTOR] Размер ответа: ${response.data.length} символов`);
-      
-      const $ = require('cheerio').load(response.data);
-      const torrents = [];
+      console.log(`[JACRED] Ответ получен, статус: ${response.status}`);
+      console.log(`[JACRED] Размер ответа: ${JSON.stringify(response.data).length} символов`);
 
-      // Попробуем разные селекторы
-      const selectors = [
-        'tr.gai', 
-        'tr.tum', 
-        '.gai', 
-        '.tum', 
-        'table tr:not(:first-child)',
-        'tbody tr'
-      ];
-      
-      for (const selector of selectors) {
-        const elements = $(selector);
-        console.log(`[RUTOR] Селектор "${selector}": найдено ${elements.length} элементов`);
-        
-        if (elements.length > 0) {
-          elements.each((i, element) => {
-            try {
-              const $el = $(element);
-              const titleElement = $el.find('a').first();
-              const title = titleElement.text().trim();
-              const link = titleElement.attr('href');
-              
-              // Ищем размер, сиды и личи в разных колонках
-              const cells = $el.find('td');
-              let size = '';
-              let seeds = 0;
-              let leeches = 0;
-              
-              if (cells.length >= 6) {
-                size = $(cells[3]).text().trim();
-                seeds = parseInt($(cells[4]).text().trim()) || 0;
-                leeches = parseInt($(cells[5]).text().trim()) || 0;
-              } else if (cells.length >= 4) {
-                size = $(cells[2]).text().trim();
-                seeds = parseInt($(cells[3]).text().trim()) || 0;
-                leeches = 0;
-              }
+      if (response.data && Array.isArray(response.data)) {
+        const torrents = response.data.map(item => ({
+          title: item.title || item.name || 'Unknown',
+          size: item.size || 'Unknown',
+          seeds: item.seeds || 0,
+          leeches: item.leeches || 0,
+          link: item.magnet || item.torrent || '',
+          source: 'jacred',
+          quality: item.quality || 'Unknown',
+          language: item.language || 'Unknown'
+        }));
 
-              if (title && link && title.length > 5) {
-                // Фильтруем служебные записи
-                const lowerTitle = title.toLowerCase();
-                if (!lowerTitle.includes('новый адрес') && 
-                    !lowerTitle.includes('блокировка') && 
-                    !lowerTitle.includes('путеводитель') &&
-                    !lowerTitle.includes('правила') &&
-                    !lowerTitle.includes('руководства')) {
-                  
-                  torrents.push({
-                    title: title,
-                    size: size,
-                    seeds: seeds,
-                    leeches: leeches,
-                    link: 'http://rutor.info' + link,
-                    source: 'rutor'
-                  });
-                  console.log(`[RUTOR] Найден торрент: ${title.substring(0, 50)}... (${size}, ${seeds}↑)`);
-                }
-              }
-            } catch (error) {
-              console.log(`[RUTOR] Ошибка парсинга элемента ${i}:`, error.message);
-            }
-          });
-          
-          if (torrents.length > 0) {
-            console.log(`[RUTOR] Найдено ${torrents.length} торрентов с селектором "${selector}"`);
-            break;
-          }
-        }
-      }
-
-      // Если ничего не найдено, попробуем альтернативный подход
-      if (torrents.length === 0) {
-        console.log(`[RUTOR] Попытка альтернативного поиска...`);
-        const allLinks = $('a[href*="/torrent/"]');
-        console.log(`[RUTOR] Найдено ${allLinks.length} ссылок на торренты`);
-        
-        allLinks.each((i, element) => {
-          try {
-            const $el = $(element);
-            const title = $el.text().trim();
-            const link = $el.attr('href');
-            
-            if (title && link && title.length > 5) {
-              const lowerTitle = title.toLowerCase();
-              if (!lowerTitle.includes('новый адрес') && 
-                  !lowerTitle.includes('блокировка') && 
-                  !lowerTitle.includes('путеводитель')) {
-                
-                torrents.push({
-                  title: title,
-                  size: 'Unknown',
-                  seeds: 0,
-                  leeches: 0,
-                  link: 'http://rutor.info' + link,
-                  source: 'rutor'
-                });
-                console.log(`[RUTOR] Альтернативный поиск: ${title.substring(0, 50)}...`);
-              }
-            }
-          } catch (error) {
-            console.log(`[RUTOR] Ошибка альтернативного поиска:`, error.message);
-          }
+        console.log(`[JACRED] Найдено ${torrents.length} торрентов по Kinopoisk ID`);
+        torrents.forEach((torrent, index) => {
+          console.log(`[JACRED] ${index + 1}. ${torrent.title.substring(0, 50)}... (${torrent.size}, ${torrent.seeds}↑)`);
         });
+
+        return torrents;
       }
 
-      return torrents;
+      return [];
     } catch (error) {
-      console.log(`[RUTOR] Ошибка поиска:`, error.message);
-      if (error.code === 'ECONNABORTED') {
-        console.log(`[RUTOR] Таймаут соединения - сайт может быть медленным`);
-      } else if (error.response) {
-        console.log(`[RUTOR] HTTP ошибка: ${error.response.status}`);
+      console.log(`[JACRED] Ошибка поиска по Kinopoisk ID:`, error.message);
+      if (error.response) {
+        console.log(`[JACRED] HTTP ошибка: ${error.response.status}`);
+        console.log(`[JACRED] Данные ответа:`, error.response.data);
+      }
+      return [];
+    }
+  }
+
+  // Поиск на Jacred по названию
+  async searchJacredByName(query) {
+    try {
+      console.log(`[JACRED] Поиск по названию: "${query}"`);
+      const searchURL = `https://jacred.xyz/api/v1.0/torrents?search=${encodeURIComponent(query)}`;
+      console.log(`[JACRED] URL: ${searchURL}`);
+      
+      const response = await axios.get(searchURL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3'
+        },
+        timeout: 15000,
+        httpsAgent: this.httpsAgent
+      });
+
+      console.log(`[JACRED] Ответ получен, статус: ${response.status}`);
+
+      if (response.data && Array.isArray(response.data)) {
+        const torrents = response.data.map(item => ({
+          title: item.title || item.name || 'Unknown',
+          size: item.size || 'Unknown',
+          seeds: item.seeds || 0,
+          leeches: item.leeches || 0,
+          link: item.magnet || item.torrent || '',
+          source: 'jacred',
+          quality: item.quality || 'Unknown',
+          language: item.language || 'Unknown'
+        }));
+
+        console.log(`[JACRED] Найдено ${torrents.length} торрентов по названию`);
+        torrents.slice(0, 3).forEach((torrent, index) => {
+          console.log(`[JACRED] ${index + 1}. ${torrent.title.substring(0, 50)}... (${torrent.size}, ${torrent.seeds}↑)`);
+        });
+
+        return torrents;
+      }
+
+      return [];
+    } catch (error) {
+      console.log(`[JACRED] Ошибка поиска по названию:`, error.message);
+      if (error.response) {
+        console.log(`[JACRED] HTTP ошибка: ${error.response.status}`);
       }
       return [];
     }
