@@ -19,6 +19,8 @@ router.post('/api/add-file', adminOnly, upload.single('torrent'), Torrent.addFil
 router.delete('/api/:infoHash', adminOnly, Torrent.remove);
 router.post('/api/:infoHash/pause', adminOnly, Torrent.pause);
 router.post('/api/:infoHash/resume', adminOnly, Torrent.resume);
+router.post('/api/:infoHash/force-start', adminOnly, Torrent.forceStart);
+router.get('/api/:infoHash/diagnose', adminOnly, Torrent.diagnose);
 router.get('/stream/:infoHash/:fileIndex', authVerify, Torrent.stream);
 
 module.exports = router;

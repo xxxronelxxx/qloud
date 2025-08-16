@@ -15,10 +15,42 @@ class TorrentController {
 
   async getClient() {
     if (this.client) return this.client;
-    const mod = await import('webtorrent');
-    const WebTorrent = mod.default || mod;
-    this.client = new WebTorrent({ dht: true, tracker: true });
-    return this.client;
+    
+    try {
+      const mod = await import('webtorrent');
+      const WebTorrent = mod.default || mod;
+      
+      // Создаем клиент с улучшенными настройками
+      this.client = new WebTorrent({ 
+        dht: true,           // Включаем DHT
+        tracker: true,       // Включаем трекеры
+        lpd: true,           // Включаем локальное peer discovery
+        utp: true,           // Включаем uTP
+        maxConns: 55,        // Увеличиваем максимальное количество соединений
+        nodeId: undefined,   // Автоматически генерируем node ID
+        peerId: undefined,   // Автоматически генерируем peer ID
+        announce: [],        // Пустой список трекеров по умолчанию
+        getAnnounceOpts: () => ({}), // Опции для анонса
+        rtcConfig: {},       // WebRTC конфигурация
+        userAgent: 'WebTorrent/2.0.0' // User agent
+      });
+      
+      // Добавляем обработчики событий для клиента
+      this.client.on('error', (err) => {
+        console.error('[WebTorrent Client Error]:', err.message);
+      });
+      
+      this.client.on('warning', (warning) => {
+        console.warn('[WebTorrent Client Warning]:', warning.message);
+      });
+      
+      console.log('[WebTorrent Client] Инициализирован с улучшенными настройками');
+      
+      return this.client;
+    } catch (error) {
+      console.error('[WebTorrent Client] Ошибка инициализации:', error);
+      throw error;
+    }
   }
 
   initSocket(io) {
@@ -70,6 +102,12 @@ class TorrentController {
     // Событие при добавлении торрента
     torrent.on('infoHash', () => {
       console.log(`[Добавлен] ${torrent.name || torrent.infoHash}`);
+      
+      // Принудительно запускаем торрент
+      if (torrent.paused) {
+        torrent.resume();
+      }
+      
       this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
     });
 
@@ -80,14 +118,54 @@ class TorrentController {
     // Событие загрузки метаданных
     torrent.on('metadata', () => {
       console.log(`[Метаданные] ${torrent.name}`);
-      // При загрузке метаданных отправляем обновление
+      
+      // Принудительно запускаем торрент после загрузки метаданных
+      if (torrent.paused) {
+        torrent.resume();
+      }
+      
+      // Принудительно выбираем все файлы для загрузки
+      if (torrent.files && torrent.files.length > 0) {
+        torrent.files.forEach(file => {
+          if (!file.selected) {
+            file.select();
+          }
+        });
+      }
+      
+      // Принудительно выбираем все кусочки для загрузки
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+      
+      // Принудительно отправляем событие обновления
       this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
     });
     
     // Событие готовности торрента
     torrent.on('ready', () => {
       console.log(`[Готов] ${torrent.name}`);
-      // При готовности торрента отправляем обновление
+      
+      // Принудительно запускаем торрент
+      if (torrent.paused) {
+        torrent.resume();
+      }
+      
+      // Принудительно выбираем все файлы для загрузки
+      if (torrent.files && torrent.files.length > 0) {
+        torrent.files.forEach(file => {
+          if (!file.selected) {
+            file.select();
+          }
+        });
+      }
+      
+      // Принудительно выбираем все кусочки для загрузки
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+      
+      // Принудительно отправляем событие обновления
       this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
     });
     
@@ -100,6 +178,14 @@ class TorrentController {
     // Событие ошибки
     torrent.on('error', (err) => {
       console.error(`[Ошибка] ${torrent.name}:`, err.message);
+      
+      // Пытаемся перезапустить торрент при ошибке
+      setTimeout(() => {
+        if (torrent.paused) {
+          torrent.resume();
+        }
+      }, 5000);
+      
       emitUpdate();
     });
     
@@ -111,16 +197,77 @@ class TorrentController {
     // Событие подключения к пирам
     torrent.on('wire', (wire) => {
       console.log(`[Подключение] ${torrent.name} - peers: ${torrent.numPeers}`);
+      
+      // Принудительно запускаем торрент при подключении к пирам
+      if (torrent.paused) {
+        torrent.resume();
+      }
+      
       emitUpdate();
     });
+    
+    // Событие изменения статуса
+    torrent.on('noPeers', () => {
+      console.log(`[Нет пиров] ${torrent.name}`);
+      emitUpdate();
+    });
+    
+    // Принудительно запускаем торрент после настройки всех обработчиков
+    setTimeout(() => {
+      if (torrent.paused) {
+        torrent.resume();
+      }
+      
+      // Принудительно выбираем все файлы для загрузки
+      if (torrent.files && torrent.files.length > 0) {
+        torrent.files.forEach(file => {
+          if (!file.selected) {
+            file.select();
+          }
+        });
+      }
+      
+      // Принудительно выбираем все кусочки для загрузки
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+    }, 1000);
   }
 
   list = async (req, res) => {
-    const client = await this.getClient();
-    res.json({
-      success: true,
-      items: client.torrents.map(t => this.serializeTorrent(t))
-    });
+    try {
+      const client = await this.getClient();
+      
+      // Принудительно запускаем все торренты, которые на паузе
+      client.torrents.forEach(torrent => {
+        if (torrent.paused) {
+          console.log(`[Автозапуск] ${torrent.name || torrent.infoHash}`);
+          torrent.resume();
+          
+          // Принудительно выбираем все файлы для загрузки
+          if (torrent.files && torrent.files.length > 0) {
+            torrent.files.forEach(file => {
+              if (!file.selected) {
+                file.select();
+              }
+            });
+          }
+          
+          // Принудительно выбираем все кусочки для загрузки
+          if (torrent.pieces && torrent.pieces.length > 0) {
+            torrent.select(0, torrent.pieces.length - 1, false);
+          }
+        }
+      });
+      
+      res.json({
+        success: true,
+        items: client.torrents.map(t => this.serializeTorrent(t))
+      });
+    } catch (error) {
+      console.error('[List Error]:', error);
+      res.json({ success: false, msg: error.message });
+    }
   }
 
   addMagnet = async (req, res) => {
@@ -132,8 +279,20 @@ class TorrentController {
 
       const client = await this.getClient();
       
-      // Добавляем торрент
-      const torrent = client.add(magnet, { path: this.downloadDir }, (added) => {
+      // Проверяем, не добавлен ли уже этот торрент
+      const existingTorrent = client.torrents.find(t => t.magnetURI === magnet);
+      if (existingTorrent) {
+        return res.json({ success: false, msg: 'Этот торрент уже добавлен' });
+      }
+      
+      // Добавляем торрент с дополнительными опциями
+      const torrent = client.add(magnet, { 
+        path: this.downloadDir,
+        announce: [], // Отключаем трекеры по умолчанию
+        dht: true,   // Включаем DHT
+        lpd: true,   // Включаем локальное peer discovery
+        private: false // Разрешаем публичные торренты
+      }, (added) => {
         console.log(`[Добавлен торрент] ${added.name || added.infoHash}`);
         
         // Настраиваем обработчики событий
@@ -147,6 +306,11 @@ class TorrentController {
           type: 'magnet',
           data: magnet
         });
+
+        // Принудительно запускаем торрент
+        if (added.paused) {
+          added.resume();
+        }
 
         // Отправляем событие добавления
         this.io && this.io.emit('torrent:add', this.serializeTorrent(added));
@@ -168,6 +332,11 @@ class TorrentController {
           data: magnet
         });
 
+        // Принудительно запускаем торрент
+        if (torrent.paused) {
+          torrent.resume();
+        }
+
         // Отправляем событие добавления
         this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
       }
@@ -188,8 +357,14 @@ class TorrentController {
 
       const client = await this.getClient();
       
-      // Добавляем торрент
-      const torrent = client.add(file.buffer, { path: this.downloadDir }, (added) => {
+      // Добавляем торрент с дополнительными опциями
+      const torrent = client.add(file.buffer, { 
+        path: this.downloadDir,
+        announce: [], // Отключаем трекеры по умолчанию
+        dht: true,   // Включаем DHT
+        lpd: true,   // Включаем локальное peer discovery
+        private: false // Разрешаем публичные торренты
+      }, (added) => {
         console.log(`[Добавлен торрент из файла] ${added.name || added.infoHash}`);
         
         // Настраиваем обработчики событий
@@ -203,6 +378,11 @@ class TorrentController {
           type: 'buffer',
           data: file.buffer
         });
+
+        // Принудительно запускаем торрент
+        if (added.paused) {
+          added.resume();
+        }
 
         // Отправляем событие добавления
         this.io && this.io.emit('torrent:add', this.serializeTorrent(added));
@@ -223,6 +403,11 @@ class TorrentController {
           type: 'buffer',
           data: file.buffer
         });
+
+        // Принудительно запускаем торрент
+        if (torrent.paused) {
+          torrent.resume();
+        }
 
         // Отправляем событие добавления
         this.io && this.io.emit('torrent:add', this.serializeTorrent(torrent));
@@ -354,6 +539,95 @@ class TorrentController {
       });
     } catch (e) {
       console.error('Ошибка паузы:', e);
+      res.json({ success: false, msg: e.message });
+    }
+  }
+
+  // Метод для диагностики проблем с торрентом
+  diagnose = async (req, res) => {
+    try {
+      const { infoHash } = req.params;
+      const client = await this.getClient();
+      const torrent = client.get(infoHash);
+
+      if (!torrent) {
+        return res.json({ success: false, msg: 'Торрент не найден' });
+      }
+
+      const diagnosis = {
+        infoHash: torrent.infoHash,
+        name: torrent.name,
+        paused: torrent.paused,
+        progress: torrent.progress,
+        downloaded: torrent.downloaded,
+        length: torrent.length,
+        numPeers: torrent.numPeers,
+        numSeeds: torrent.numSeeds,
+        numLeeches: torrent.numLeeches,
+        downloadSpeed: torrent.downloadSpeed,
+        uploadSpeed: torrent.uploadSpeed,
+        timeRemaining: torrent.timeRemaining,
+        hasMetadata: !!(torrent.files && torrent.files.length > 0),
+        filesCount: torrent.files ? torrent.files.length : 0,
+        piecesCount: torrent.pieces ? torrent.pieces.length : 0,
+        selectedPieces: torrent.pieces ? torrent.pieces.filter(p => p).length : 0,
+        selectedFiles: torrent.files ? torrent.files.filter(f => f.selected).length : 0,
+        announce: torrent.announce,
+        magnetURI: torrent.magnetURI,
+        status: torrent.status,
+        error: torrent.error ? torrent.error.message : null
+      };
+
+      console.log(`[Диагностика] ${torrent.name || torrent.infoHash}:`, diagnosis);
+
+      res.json({ success: true, diagnosis });
+    } catch (e) {
+      console.error('Ошибка диагностики:', e);
+      res.json({ success: false, msg: e.message });
+    }
+  }
+
+  // Метод для принудительного запуска торрента
+  forceStart = async (req, res) => {
+    try {
+      const { infoHash } = req.params;
+      const client = await this.getClient();
+      const torrent = client.get(infoHash);
+
+      if (!torrent) {
+        return res.json({ success: false, msg: 'Торрент не найден' });
+      }
+
+      console.log(`[Принудительный запуск] ${torrent.name || torrent.infoHash}`);
+
+      // Принудительно запускаем торрент
+      if (torrent.paused) {
+        torrent.resume();
+      }
+
+      // Принудительно выбираем все файлы для загрузки
+      if (torrent.files && torrent.files.length > 0) {
+        torrent.files.forEach(file => {
+          if (!file.selected) {
+            file.select();
+          }
+        });
+      }
+
+      // Принудительно выбираем все кусочки для загрузки
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+
+      // Убираем из паузы
+      this.pausedTorrents.delete(infoHash);
+
+      // Отправляем обновление
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+
+      res.json({ success: true, msg: 'Торрент принудительно запущен' });
+    } catch (e) {
+      console.error('Ошибка принудительного запуска:', e);
       res.json({ success: false, msg: e.message });
     }
   }

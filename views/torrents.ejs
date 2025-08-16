@@ -109,6 +109,8 @@
           <div class="fw-medium text-truncate" title="${t.name||t.infoHash}">${t.name||t.infoHash}</div>
           <div class="d-flex gap-2">
             <button class="btn btn-outline-secondary btn-sm rounded-4" data-toggle="${t.paused ? 'resume' : 'pause'}">${t.paused ? 'Пуск' : 'Пауза'}</button>
+            <button class="btn btn-outline-warning btn-sm rounded-4" data-force-start="${t.infoHash}" title="Принудительный запуск">⚡</button>
+            <button class="btn btn-outline-info btn-sm rounded-4" data-diagnose="${t.infoHash}" title="Диагностика">🔍</button>
             <div class="btn-group">
               <button class="btn btn-outline-danger btn-sm rounded-4" data-remove="${t.infoHash}">Удалить</button>
               <button class="btn btn-outline-danger btn-sm rounded-4 dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"></button>
@@ -126,6 +128,7 @@
           <div>⬇ <span data-ds>0</span>/s • ⬆ <span data-us>0</span>/s • peers: <span data-p>0</span></div>
         </div>
         <div class="mt-2 d-flex flex-wrap gap-2" data-files></div>
+        <div class="mt-1 small text-muted" data-status></div>
       `;
       
       // Добавляем в список
@@ -153,6 +156,55 @@
           await fetch(`/torrents/api/${t.infoHash}/pause`, { method:'POST' });
         } else {
           await fetch(`/torrents/api/${t.infoHash}/resume`, { method:'POST' });
+        }
+      };
+      
+      // Обработчик для кнопки принудительного запуска
+      const forceStartBtn = el.querySelector('[data-force-start]');
+      forceStartBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-start`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Торрент принудительно запущен');
+          } else {
+            console.error('Ошибка принудительного запуска:', result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при принудительном запуске:', error);
+        }
+      };
+      
+      // Обработчик для кнопки диагностики
+      const diagnoseBtn = el.querySelector('[data-diagnose]');
+      diagnoseBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/diagnose`);
+          const result = await response.json();
+          if (result.success) {
+            console.log('Диагностика торрента:', result.diagnosis);
+            // Показываем диагностику в модальном окне или alert
+            const diagnosisText = `
+Диагностика торрента:
+- Название: ${result.diagnosis.name || 'Неизвестно'}
+- Прогресс: ${result.diagnosis.progress}%
+- Пиры: ${result.diagnosis.numPeers}
+- Сиды: ${result.diagnosis.numSeeds}
+- Личи: ${result.diagnosis.numLeeches}
+- Скорость загрузки: ${result.diagnosis.downloadSpeed || 0} B/s
+- Метаданные: ${result.diagnosis.hasMetadata ? 'Загружены' : 'Не загружены'}
+- Файлы: ${result.diagnosis.filesCount}
+- Выбранные файлы: ${result.diagnosis.selectedFiles}
+- Куски: ${result.diagnosis.piecesCount}
+- Выбранные куски: ${result.diagnosis.selectedPieces}
+- Ошибка: ${result.diagnosis.error || 'Нет'}
+            `;
+            alert(diagnosisText);
+          } else {
+            console.error('Ошибка диагностики:', result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при диагностике:', error);
         }
       };
     }
@@ -240,6 +292,33 @@
         });
       }
     }
+    
+    // Обновляем статус торрента
+    const statusEl = el.querySelector('[data-status]');
+    if (statusEl) {
+      let statusText = '';
+      let statusClass = 'text-muted';
+      
+      if (t.paused) {
+        statusText = '⏸️ Торрент на паузе';
+        statusClass = 'text-warning';
+      } else if (t.progress === 0 && t.numPeers === 0) {
+        statusText = '🔍 Поиск пиров...';
+        statusClass = 'text-info';
+      } else if (t.progress === 0 && t.numPeers > 0) {
+        statusText = '📥 Подключение к пирам...';
+        statusClass = 'text-primary';
+      } else if (t.progress > 0 && t.progress < 100) {
+        statusText = '📥 Загрузка...';
+        statusClass = 'text-success';
+      } else if (t.progress === 100) {
+        statusText = '✅ Загрузка завершена';
+        statusClass = 'text-success';
+      }
+      
+      statusEl.textContent = statusText;
+      statusEl.className = `mt-1 small ${statusClass}`;
+    }
   }
 
   // Обработка событий сокетов
@@ -280,11 +359,52 @@
       const data = await res.json();
       if (data && data.items) {
         data.items.forEach(renderItem);
+        
+        // Проверяем "зависшие" торренты (0% прогресса более 30 секунд)
+        data.items.forEach(torrent => {
+          if (torrent.progress === 0 && torrent.numPeers === 0 && !torrent.paused) {
+            // Проверяем, не "завис" ли торрент
+            const torrentEl = document.getElementById('t_' + torrent.infoHash);
+            if (torrentEl) {
+              const statusEl = torrentEl.querySelector('[data-status]');
+              if (statusEl && statusEl.textContent.includes('Поиск пиров')) {
+                // Если торрент долго ищет пиров, показываем предупреждение
+                statusEl.textContent = '⚠️ Долгий поиск пиров - попробуйте принудительный запуск';
+                statusEl.className = 'mt-1 small text-warning';
+              }
+            }
+          }
+        });
       }
     } catch (error) {
       // Игнорируем ошибки при периодическом обновлении
     }
   }, 2000);
+  
+  // Автоматическая проверка "зависших" торрентов каждые 30 секунд
+  setInterval(async () => {
+    try {
+      const res = await fetch('/torrents/api/list');
+      const data = await res.json();
+      if (data && data.items) {
+        data.items.forEach(torrent => {
+          // Если торрент на 0% более 30 секунд и нет пиров, предлагаем принудительный запуск
+          if (torrent.progress === 0 && torrent.numPeers === 0 && !torrent.paused) {
+            const torrentEl = document.getElementById('t_' + torrent.infoHash);
+            if (torrentEl) {
+              const statusEl = torrentEl.querySelector('[data-status]');
+              if (statusEl) {
+                statusEl.innerHTML = '⚠️ Торрент не прогрессирует - <button class="btn btn-warning btn-sm" onclick="forceStartTorrent(\'' + torrent.infoHash + '\')">Принудительный запуск</button>';
+                statusEl.className = 'mt-1 small text-warning';
+              }
+            }
+          }
+        });
+      }
+    } catch (error) {
+      // Игнорируем ошибки
+    }
+  }, 30000);
 
   document.getElementById('magnetForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -621,6 +741,31 @@
     } catch (error) {
       console.error('Add YTS torrent error:', error);
       alert('Ошибка добавления торрента');
+    }
+  }
+
+  async function forceStartTorrent(infoHash) {
+    try {
+      const response = await fetch(`/torrents/api/${infoHash}/force-start`, { method:'POST' });
+      const result = await response.json();
+      if (result.success) {
+        console.log('Торрент принудительно запущен');
+        // Обновляем статус
+        const torrentEl = document.getElementById('t_' + infoHash);
+        if (torrentEl) {
+          const statusEl = torrentEl.querySelector('[data-status]');
+          if (statusEl) {
+            statusEl.textContent = '⚡ Принудительно запущен...';
+            statusEl.className = 'mt-1 small text-info';
+          }
+        }
+      } else {
+        console.error('Ошибка принудительного запуска:', result.msg);
+        alert('Ошибка принудительного запуска: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при принудительном запуске:', error);
+      alert('Ошибка сети при принудительном запуске');
     }
   }
 </script>
