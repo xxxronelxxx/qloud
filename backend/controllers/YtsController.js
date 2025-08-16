@@ -30,9 +30,12 @@ class YtsController {
       }
     }
     
+    // Создаем правильный ID для кэша
+    const movieId = `russian_${russianMovie.id}`;
+    
     return [{
-      id: `russian_${russianMovie.id}`,
-      movieId: russianMovie.id,
+      id: movieId,
+      movieId: movieId, // Важно: movieId должен совпадать с тем, что в кэше
       title: `${russianMovie.title} (${russianMovie.year}) [Русский фильм]`,
       quality: 'Unknown',
       type: 'movie',
@@ -40,8 +43,8 @@ class YtsController {
       seeds: 0,
       leeches: 0,
       date: russianMovie.release_date || new Date().toISOString(),
-      hash: '',
-      torrentUrl: '',
+      hash: '', // Пустой hash для русских фильмов
+      torrentUrl: '', // Пустой URL для русских фильмов
       magnet: '',
       poster: posterUrl,
       year: russianMovie.year,
