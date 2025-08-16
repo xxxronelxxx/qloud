@@ -63,38 +63,57 @@ class TorrentController {
   }
 
   serializeTorrent(t) {
-    const isPaused = this.pausedTorrents.has(t.infoHash);
-    
-    // Проверяем, загружены ли метаданные
-    // Метаданные загружены, если есть файлы и имя торрента
     const hasMetadata = t.files && t.files.length > 0 && t.name && !t.name.includes('Загрузка метаданных');
     
-    // Определяем отображаемое имя
-    let displayName = 'Загрузка метаданных...';
-    if (t.name && !t.name.includes('Загрузка метаданных')) {
-      displayName = t.name;
-    } else if (t.infoHash) {
-      displayName = `Загрузка метаданных... (${t.infoHash.substring(0, 8)}...)`;
+    // Правильно считаем количество пиров
+    let numPeers = 0;
+    let numSeeds = 0;
+    let numLeeches = 0;
+    
+    if (t.wires && t.wires.length > 0) {
+      // Считаем реально подключенных пиров
+      numPeers = t.wires.length;
+      
+      // Считаем сиды и личи по их статусу
+      t.wires.forEach(wire => {
+        if (wire.peer && wire.peer.isSeeder) {
+          numSeeds++;
+        } else {
+          numLeeches++;
+        }
+      });
+    } else {
+      // Если нет подключений, используем стандартные значения
+      numPeers = t.numPeers || 0;
+      numSeeds = t.numSeeds || 0;
+      numLeeches = t.numLeeches || 0;
+    }
+    
+    // Принудительно обновляем статистику торрента
+    if (t.tracker) {
+      try {
+        // Принудительно обновляем трекер
+        t.tracker.announce();
+      } catch (e) {
+        // Игнорируем ошибки трекера
+      }
     }
     
     return {
       infoHash: t.infoHash,
-      name: displayName,
-      progress: Math.round((t.progress || 0) * 100),
+      name: hasMetadata ? t.name : `Загрузка метаданных... (${t.infoHash.substring(0, 8)})`,
+      displayName: hasMetadata ? t.name : `Загрузка метаданных... (${t.infoHash.substring(0, 8)})`,
+      progress: Math.round(t.progress * 100),
       downloaded: t.downloaded || 0,
       length: t.length || 0,
       downloadSpeed: t.downloadSpeed || 0,
       uploadSpeed: t.uploadSpeed || 0,
       timeRemaining: t.timeRemaining || 0,
-      numPeers: t.numPeers || 0,
-      paused: isPaused,
-      files: hasMetadata ? (t.files || []).map((f, idx) => ({
-        index: idx,
-        name: f.name,
-        length: f.length,
-        mime: mime.lookup(f.name) || 'application/octet-stream'
-      })) : [],
-      path: t.path,
+      numPeers: numPeers,
+      numSeeds: numSeeds,
+      numLeeches: numLeeches,
+      paused: t.paused,
+      files: hasMetadata ? t.files : [],
       hasMetadata: hasMetadata
     };
   }
@@ -621,6 +640,68 @@ class TorrentController {
       });
     } catch (e) {
       console.error('Ошибка паузы:', e);
+      res.json({ success: false, msg: e.message });
+    }
+  }
+
+  // Метод для принудительного обновления статистики пиров
+  forceUpdateStats = async (req, res) => {
+    try {
+      const { infoHash } = req.params;
+      const client = await this.getClient();
+      const torrent = client.get(infoHash);
+
+      if (!torrent) {
+        return res.json({ success: false, msg: 'Торрент не найден' });
+      }
+
+      console.log(`[Принудительное обновление статистики] ${torrent.name || torrent.infoHash}`);
+
+      // Принудительно обновляем трекер
+      if (torrent.tracker) {
+        try {
+          torrent.tracker.announce();
+          console.log(`[Трекер обновлен] ${torrent.name}`);
+        } catch (e) {
+          console.log(`[Ошибка трекера] ${torrent.name}:`, e.message);
+        }
+      }
+
+      // Принудительно обновляем DHT
+      if (torrent.dht) {
+        console.log(`[DHT обновлен] ${torrent.name}`);
+      }
+
+      // Принудительно обновляем локальное peer discovery
+      if (torrent.lpd) {
+        console.log(`[LPD обновлен] ${torrent.name}`);
+      }
+
+      // Принудительно запускаем торрент
+      if (torrent.paused) {
+        torrent.resume();
+      }
+
+      // Принудительно выбираем все файлы для загрузки
+      if (torrent.files && torrent.files.length > 0) {
+        torrent.files.forEach(file => {
+          if (!file.selected) {
+            file.select();
+          }
+        });
+      }
+
+      // Принудительно выбираем все кусочки для загрузки
+      if (torrent.pieces && torrent.pieces.length > 0) {
+        torrent.select(0, torrent.pieces.length - 1, false);
+      }
+
+      // Отправляем обновление с правильной статистикой
+      this.io && this.io.emit('torrent:update', this.serializeTorrent(torrent));
+
+      res.json({ success: true, msg: 'Статистика обновлена' });
+    } catch (e) {
+      console.error('Ошибка обновления статистики:', e);
       res.json({ success: false, msg: e.message });
     }
   }

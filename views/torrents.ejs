@@ -113,6 +113,7 @@
             <button class="btn btn-outline-primary btn-sm rounded-4" data-force-metadata="${t.infoHash}" title="Принудительная загрузка метаданных">📋</button>
             <button class="btn btn-outline-success btn-sm rounded-4" data-force-connect="${t.infoHash}" title="Принудительное подключение">🔗</button>
             <button class="btn btn-outline-danger btn-sm rounded-4" data-force-reconnect="${t.infoHash}" title="Принудительное переподключение">🔄</button>
+            <button class="btn btn-outline-warning btn-sm rounded-4" data-force-update-stats="${t.infoHash}" title="Обновить статистику">📊</button>
             <button class="btn btn-outline-info btn-sm rounded-4" data-diagnose="${t.infoHash}" title="Диагностика">🔍</button>
             <div class="btn-group">
               <button class="btn btn-outline-danger btn-sm rounded-4" data-remove="${t.infoHash}">Удалить</button>
@@ -312,6 +313,46 @@
           alert('Ошибка сети при принудительном переподключении');
         }
       };
+      
+      // Обработчик для кнопки обновления статистики
+      const forceUpdateStatsBtn = el.querySelector('[data-force-update-stats]');
+      forceUpdateStatsBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-update-stats`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Статистика обновлена');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '📊 Статистика обновлена...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+            
+            // Принудительно обновляем отображение пиров
+            setTimeout(async () => {
+              try {
+                const listResponse = await fetch('/torrents/api/list');
+                const listData = await listResponse.json();
+                if (listData && listData.items) {
+                  const updatedTorrent = listData.items.find(item => item.infoHash === t.infoHash);
+                  if (updatedTorrent) {
+                    renderItem(updatedTorrent);
+                  }
+                }
+              } catch (error) {
+                console.error('Ошибка обновления списка:', error);
+              }
+            }, 2000);
+          } else {
+            console.error('Ошибка обновления статистики:', result.msg);
+            alert('Ошибка обновления статистики: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при обновлении статистики:', error);
+          alert('Ошибка сети при обновлении статистики');
+        }
+      };
     }
     
     // Обновляем содержимое элемента
@@ -491,43 +532,6 @@
               }
             }
           }
-        });
-      }
-    } catch (error) {
-      // Игнорируем ошибки при периодическом обновлении
-    }
-  }, 2000);
-  
-  // Автоматическая проверка "зависших" торрентов каждые 30 секунд
-  setInterval(async () => {
-    try {
-      const res = await fetch('/torrents/api/list');
-      const data = await res.json();
-      if (data && data.items) {
-        data.items.forEach(torrent => {
-          // Если торрент на 0% более 30 секунд и нет пиров, предлагаем принудительный запуск
-          if (torrent.progress === 0 && torrent.numPeers === 0 && !torrent.paused) {
-            const torrentEl = document.getElementById('t_' + torrent.infoHash);
-            if (torrentEl) {
-              const statusEl = torrentEl.querySelector('[data-status]');
-              if (statusEl) {
-                statusEl.innerHTML = '⚠️ Торрент не прогрессирует - <button class="btn btn-warning btn-sm" onclick="forceStartTorrent(\'' + torrent.infoHash + '\')">Принудительный запуск</button>';
-                statusEl.className = 'mt-1 small text-warning';
-              }
-            }
-          }
-          
-          // Если торрент без метаданных более 1 минуты, предлагаем принудительную загрузку
-          if ((!torrent.files || torrent.files.length === 0) && !torrent.paused) {
-            const torrentEl = document.getElementById('t_' + torrent.infoHash);
-            if (torrentEl) {
-              const statusEl = torrentEl.querySelector('[data-status]');
-              if (statusEl && statusEl.textContent.includes('Ожидание метаданных')) {
-                statusEl.innerHTML = '⚠️ Метаданные не загружаются - <button class="btn btn-primary btn-sm" onclick="forceMetadataTorrent(\'' + torrent.infoHash + '\')">Принудительная загрузка</button>';
-                statusEl.className = 'mt-1 small text-warning';
-              }
-            }
-          }
           
           // Если у торрента 0 пиров более 2 минут, предлагаем принудительное переподключение
           if (torrent.numPeers === 0 && !torrent.paused) {
@@ -543,9 +547,27 @@
         });
       }
     } catch (error) {
+      // Игнорируем ошибки при периодическом обновлении
+    }
+  }, 2000);
+  
+  // Автоматическое обновление статистики пиров каждые 10 секунд
+  setInterval(async () => {
+    try {
+      const res = await fetch('/torrents/api/list');
+      const data = await res.json();
+      if (data && data.items) {
+        // Обновляем только торренты с активными загрузками
+        data.items.forEach(torrent => {
+          if (torrent.progress > 0 || torrent.downloadSpeed > 0) {
+            renderItem(torrent);
+          }
+        });
+      }
+    } catch (error) {
       // Игнорируем ошибки
     }
-  }, 30000);
+  }, 10000);
 
   document.getElementById('magnetForm').addEventListener('submit', async (e) => {
     e.preventDefault();
