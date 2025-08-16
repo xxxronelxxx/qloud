@@ -243,19 +243,38 @@ class YtsController {
     try {
       console.log(`[TORRENT] Поиск торрентов для: ${film.name || film.alternativeName || film.enName}`);
       
-      const searchQueries = [
-        film.name,
-        film.alternativeName,
-        film.enName,
-        `${film.name} ${film.year}`,
-        `${film.alternativeName} ${film.year}`,
-        `${film.enName} ${film.year}`
-      ].filter(Boolean);
+      // Формируем поисковые запросы, исключая null значения
+      const searchQueries = [];
+      
+      if (film.name) {
+        searchQueries.push(film.name);
+        if (film.year) {
+          searchQueries.push(`${film.name} ${film.year}`);
+        }
+      }
+      
+      if (film.alternativeName && film.alternativeName !== film.name) {
+        searchQueries.push(film.alternativeName);
+        if (film.year) {
+          searchQueries.push(`${film.alternativeName} ${film.year}`);
+        }
+      }
+      
+      if (film.enName && film.enName !== film.name && film.enName !== film.alternativeName) {
+        searchQueries.push(film.enName);
+        if (film.year) {
+          searchQueries.push(`${film.enName} ${film.year}`);
+        }
+      }
+
+      console.log(`[TORRENT] Поисковые запросы:`, searchQueries);
 
       const allTorrents = [];
 
       for (const query of searchQueries) {
         try {
+          console.log(`[TORRENT] Поиск для запроса: "${query}"`);
+          
           // Поиск на Rutor
           const rutorTorrents = await this.searchRutor(query);
           allTorrents.push(...rutorTorrents);
@@ -290,18 +309,33 @@ class YtsController {
       
       const response = await axios.get(searchURL, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
         },
-        timeout: 10000,
-        httpsAgent: this.httpsAgent
+        timeout: 30000, // Увеличиваем таймаут до 30 секунд
+        httpsAgent: this.httpsAgent,
+        maxRedirects: 5
       });
 
       console.log(`[RUTOR] Ответ получен, статус: ${response.status}`);
+      console.log(`[RUTOR] Размер ответа: ${response.data.length} символов`);
+      
       const $ = require('cheerio').load(response.data);
       const torrents = [];
 
       // Попробуем разные селекторы
-      const selectors = ['.gai', '.tum', 'tr.gai', 'tr.tum', 'table tr'];
+      const selectors = [
+        'tr.gai', 
+        'tr.tum', 
+        '.gai', 
+        '.tum', 
+        'table tr:not(:first-child)',
+        'tbody tr'
+      ];
       
       for (const selector of selectors) {
         const elements = $(selector);
@@ -309,23 +343,50 @@ class YtsController {
         
         if (elements.length > 0) {
           elements.each((i, element) => {
-            const $el = $(element);
-            const title = $el.find('a').first().text().trim();
-            const size = $el.find('td').eq(3).text().trim();
-            const seeds = parseInt($el.find('td').eq(4).text().trim()) || 0;
-            const leeches = parseInt($el.find('td').eq(5).text().trim()) || 0;
-            const link = $el.find('a').first().attr('href');
+            try {
+              const $el = $(element);
+              const titleElement = $el.find('a').first();
+              const title = titleElement.text().trim();
+              const link = titleElement.attr('href');
+              
+              // Ищем размер, сиды и личи в разных колонках
+              const cells = $el.find('td');
+              let size = '';
+              let seeds = 0;
+              let leeches = 0;
+              
+              if (cells.length >= 6) {
+                size = $(cells[3]).text().trim();
+                seeds = parseInt($(cells[4]).text().trim()) || 0;
+                leeches = parseInt($(cells[5]).text().trim()) || 0;
+              } else if (cells.length >= 4) {
+                size = $(cells[2]).text().trim();
+                seeds = parseInt($(cells[3]).text().trim()) || 0;
+                leeches = 0;
+              }
 
-            if (title && link) {
-              torrents.push({
-                title: title,
-                size: size,
-                seeds: seeds,
-                leeches: leeches,
-                link: 'http://rutor.info' + link,
-                source: 'rutor'
-              });
-              console.log(`[RUTOR] Найден торрент: ${title.substring(0, 30)}...`);
+              if (title && link && title.length > 5) {
+                // Фильтруем служебные записи
+                const lowerTitle = title.toLowerCase();
+                if (!lowerTitle.includes('новый адрес') && 
+                    !lowerTitle.includes('блокировка') && 
+                    !lowerTitle.includes('путеводитель') &&
+                    !lowerTitle.includes('правила') &&
+                    !lowerTitle.includes('руководства')) {
+                  
+                  torrents.push({
+                    title: title,
+                    size: size,
+                    seeds: seeds,
+                    leeches: leeches,
+                    link: 'http://rutor.info' + link,
+                    source: 'rutor'
+                  });
+                  console.log(`[RUTOR] Найден торрент: ${title.substring(0, 50)}... (${size}, ${seeds}↑)`);
+                }
+              }
+            } catch (error) {
+              console.log(`[RUTOR] Ошибка парсинга элемента ${i}:`, error.message);
             }
           });
           
@@ -336,9 +397,49 @@ class YtsController {
         }
       }
 
+      // Если ничего не найдено, попробуем альтернативный подход
+      if (torrents.length === 0) {
+        console.log(`[RUTOR] Попытка альтернативного поиска...`);
+        const allLinks = $('a[href*="/torrent/"]');
+        console.log(`[RUTOR] Найдено ${allLinks.length} ссылок на торренты`);
+        
+        allLinks.each((i, element) => {
+          try {
+            const $el = $(element);
+            const title = $el.text().trim();
+            const link = $el.attr('href');
+            
+            if (title && link && title.length > 5) {
+              const lowerTitle = title.toLowerCase();
+              if (!lowerTitle.includes('новый адрес') && 
+                  !lowerTitle.includes('блокировка') && 
+                  !lowerTitle.includes('путеводитель')) {
+                
+                torrents.push({
+                  title: title,
+                  size: 'Unknown',
+                  seeds: 0,
+                  leeches: 0,
+                  link: 'http://rutor.info' + link,
+                  source: 'rutor'
+                });
+                console.log(`[RUTOR] Альтернативный поиск: ${title.substring(0, 50)}...`);
+              }
+            }
+          } catch (error) {
+            console.log(`[RUTOR] Ошибка альтернативного поиска:`, error.message);
+          }
+        });
+      }
+
       return torrents;
     } catch (error) {
       console.log(`[RUTOR] Ошибка поиска:`, error.message);
+      if (error.code === 'ECONNABORTED') {
+        console.log(`[RUTOR] Таймаут соединения - сайт может быть медленным`);
+      } else if (error.response) {
+        console.log(`[RUTOR] HTTP ошибка: ${error.response.status}`);
+      }
       return [];
     }
   }
