@@ -98,6 +98,8 @@
   function renderItem(t) {
     const id = 't_'+t.infoHash;
     let el = document.getElementById(id);
+    
+    // Если элемент не существует, создаем его
     if (!el) {
       el = document.createElement('div');
       el.id = id;
@@ -107,6 +109,13 @@
           <div class="fw-medium text-truncate" title="${t.name||t.infoHash}">${t.name||t.infoHash}</div>
           <div class="d-flex gap-2">
             <button class="btn btn-outline-secondary btn-sm rounded-4" data-toggle="${t.paused ? 'resume' : 'pause'}">${t.paused ? 'Пуск' : 'Пауза'}</button>
+            <button class="btn btn-outline-warning btn-sm rounded-4" data-force-start="${t.infoHash}" title="Принудительный запуск">⚡</button>
+            <button class="btn btn-outline-primary btn-sm rounded-4" data-force-metadata="${t.infoHash}" title="Принудительная загрузка метаданных">📋</button>
+            <button class="btn btn-outline-success btn-sm rounded-4" data-force-connect="${t.infoHash}" title="Принудительное подключение">🔗</button>
+            <button class="btn btn-outline-danger btn-sm rounded-4" data-force-reconnect="${t.infoHash}" title="Принудительное переподключение">🔄</button>
+            <button class="btn btn-outline-warning btn-sm rounded-4" data-force-restart="${t.infoHash}" title="Принудительный перезапуск">🔄</button>
+            <button class="btn btn-outline-warning btn-sm rounded-4" data-force-update-stats="${t.infoHash}" title="Обновить статистику">📊</button>
+            <button class="btn btn-outline-info btn-sm rounded-4" data-diagnose="${t.infoHash}" title="Диагностика">🔍</button>
             <div class="btn-group">
               <button class="btn btn-outline-danger btn-sm rounded-4" data-remove="${t.infoHash}">Удалить</button>
               <button class="btn btn-outline-danger btn-sm rounded-4 dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false"></button>
@@ -124,13 +133,19 @@
           <div>⬇ <span data-ds>0</span>/s • ⬆ <span data-us>0</span>/s • peers: <span data-p>0</span></div>
         </div>
         <div class="mt-2 d-flex flex-wrap gap-2" data-files></div>
+        <div class="mt-1 small text-muted" data-status></div>
       `;
+      
+      // Добавляем в список
       listEl.appendChild(el);
+      
+      // Добавляем обработчики событий
       el.querySelector('[data-remove]').onclick = async () => {
         const r = await fetch(`/torrents/api/${t.infoHash}`,{method:'DELETE'});
         const d = await r.json().catch(()=>({}));
         if (d && d.success) el.remove();
       };
+      
       const removeFilesBtn = el.querySelector('[data-remove-files]');
       removeFilesBtn.onclick = async () => {
         if (!confirm('Удалить торрент и все скачанные данные?')) return;
@@ -138,6 +153,7 @@
         const d = await r.json().catch(()=>({}));
         if (d && d.success) el.remove();
       };
+      
       const toggleBtn = el.querySelector('[data-toggle]');
       toggleBtn.onclick = async () => {
         const action = toggleBtn.getAttribute('data-toggle');
@@ -147,7 +163,200 @@
           await fetch(`/torrents/api/${t.infoHash}/resume`, { method:'POST' });
         }
       };
+      
+      // Обработчик для кнопки принудительного запуска
+      const forceStartBtn = el.querySelector('[data-force-start]');
+      forceStartBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-start`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Торрент принудительно запущен');
+          } else {
+            console.error('Ошибка принудительного запуска:', result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при принудительном запуске:', error);
+        }
+      };
+      
+      // Обработчик для кнопки диагностики
+      const diagnoseBtn = el.querySelector('[data-diagnose]');
+      diagnoseBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/diagnose`);
+          const result = await response.json();
+          if (result.success) {
+            console.log('Диагностика торрента:', result.diagnosis);
+            // Показываем диагностику в модальном окне или alert
+            const diagnosisText = `
+Диагностика торрента:
+- Название: ${result.diagnosis.name || 'Неизвестно'}
+- Прогресс: ${result.diagnosis.progress}%
+- Пиры: ${result.diagnosis.numPeers}
+- Сиды: ${result.diagnosis.numSeeds}
+- Личи: ${result.diagnosis.numLeeches}
+- Подключенные пиры: ${result.diagnosis.peers.connected}
+- Адреса пиров: ${result.diagnosis.peers.wireAddresses.length > 0 ? result.diagnosis.peers.wireAddresses.join(', ') : 'Нет'}
+- Скорость загрузки: ${result.diagnosis.downloadSpeed || 0} B/s
+- Метаданные: ${result.diagnosis.hasMetadata ? 'Загружены' : 'Не загружены'}
+- Файлы: ${result.diagnosis.filesCount}
+- Выбранные файлы: ${result.diagnosis.selectedFiles}
+- Куски: ${result.diagnosis.piecesCount}
+- Выбранные куски: ${result.diagnosis.selectedPieces}
+- DHT: ${result.diagnosis.dht}
+- LPD: ${result.diagnosis.lpd}
+- Трекер: ${result.diagnosis.trackerInfo.hasTracker ? 'Активен' : 'Неактивен'}
+- Трекеры: ${result.diagnosis.trackers.length > 0 ? result.diagnosis.trackers.map(t => t.url).join(', ') : 'Нет'}
+- Ошибка: ${result.diagnosis.error || 'Нет'}
+            `;
+            alert(diagnosisText);
+          } else {
+            console.error('Ошибка диагностики:', result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при диагностике:', error);
+        }
+      };
+      
+      // Обработчик для кнопки обновления трекеров
+      const updateTrackersBtn = el.querySelector('[data-update-trackers]');
+      updateTrackersBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/update-trackers`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Трекеры обновлены');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '🔄 Трекеры обновлены...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+          } else {
+            console.error('Ошибка обновления трекеров:', result.msg);
+            alert('Ошибка обновления трекеров: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при обновлении трекеров:', error);
+          alert('Ошибка сети при обновлении трекеров');
+        }
+      };
+      
+      // Обработчик для кнопки принудительной загрузки метаданных
+      const forceMetadataBtn = el.querySelector('[data-force-metadata]');
+      forceMetadataBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-metadata`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Принудительная загрузка метаданных запущена');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '📋 Загрузка метаданных...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+          } else {
+            console.error('Ошибка принудительной загрузки метаданных:', result.msg);
+            alert('Ошибка принудительной загрузки метаданных: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при принудительной загрузке метаданных:', error);
+          alert('Ошибка сети при принудительной загрузке метаданных');
+        }
+      };
+      
+      // Обработчик для кнопки принудительного подключения
+      const forceConnectBtn = el.querySelector('[data-force-connect]');
+      forceConnectBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-connect`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Принудительное подключение запущено');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '🔗 Принудительное подключение...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+          } else {
+            console.error('Ошибка принудительного подключения:', result.msg);
+            alert('Ошибка принудительного подключения: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при принудительном подключении:', error);
+          alert('Ошибка сети при принудительном подключении');
+        }
+      };
+
+      // Обработчик для кнопки принудительного переподключения
+      const forceReconnectBtn = el.querySelector('[data-force-reconnect]');
+      forceReconnectBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-reconnect`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Принудительное переподключение запущено');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '🔄 Принудительное переподключение...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+          } else {
+            console.error('Ошибка принудительного переподключения:', result.msg);
+            alert('Ошибка принудительного переподключения: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при принудительном переподключении:', error);
+          alert('Ошибка сети при принудительном переподключении');
+        }
+      };
+      
+      // Обработчик для кнопки обновления статистики
+      const forceUpdateStatsBtn = el.querySelector('[data-force-update-stats]');
+      forceUpdateStatsBtn.onclick = async () => {
+        try {
+          const response = await fetch(`/torrents/api/${t.infoHash}/force-update-stats`, { method:'POST' });
+          const result = await response.json();
+          if (result.success) {
+            console.log('Статистика обновлена');
+            // Обновляем статус
+            const statusEl = el.querySelector('[data-status]');
+            if (statusEl) {
+              statusEl.textContent = '📊 Статистика обновлена...';
+              statusEl.className = 'mt-1 small text-info';
+            }
+            
+            // Принудительно обновляем отображение пиров
+            setTimeout(async () => {
+              try {
+                const listResponse = await fetch('/torrents/api/list');
+                const listData = await listResponse.json();
+                if (listData && listData.items) {
+                  const updatedTorrent = listData.items.find(item => item.infoHash === t.infoHash);
+                  if (updatedTorrent) {
+                    renderItem(updatedTorrent);
+                  }
+                }
+              } catch (error) {
+                console.error('Ошибка обновления списка:', error);
+              }
+            }, 2000);
+          } else {
+            console.error('Ошибка обновления статистики:', result.msg);
+            alert('Ошибка обновления статистики: ' + result.msg);
+          }
+        } catch (error) {
+          console.error('Ошибка сети при обновлении статистики:', error);
+          alert('Ошибка сети при обновлении статистики');
+        }
+      };
     }
+    
+    // Обновляем содержимое элемента
     const bar = el.querySelector('.progress-bar');
     const prog = el.querySelector('[data-prog]');
     const down = el.querySelector('[data-down]');
@@ -157,60 +366,235 @@
     const p = el.querySelector('[data-p]');
     const files = el.querySelector('[data-files]');
     const toggleBtn = el.querySelector('[data-toggle]');
+    const nameEl = el.querySelector('.fw-medium');
+    
+    // Обновляем название
+    if (nameEl) {
+      const displayName = t.name || 'Загрузка метаданных...';
+      nameEl.textContent = displayName;
+      nameEl.title = displayName;
+      
+      // Добавляем индикатор загрузки метаданных
+      if (displayName.includes('Загрузка метаданных')) {
+        nameEl.classList.add('text-muted');
+        nameEl.classList.add('fst-italic');
+      } else {
+        nameEl.classList.remove('text-muted');
+        nameEl.classList.remove('fst-italic');
+      }
+    }
+    
+    // Обновляем кнопку пауза/пуск
     if (toggleBtn) {
       const paused = !!t.paused;
       toggleBtn.textContent = paused ? 'Пуск' : 'Пауза';
       toggleBtn.setAttribute('data-toggle', paused ? 'resume' : 'pause');
     }
 
-    bar.style.width = (t.progress||0)+"%";
-    prog.textContent = t.progress||0;
-    down.textContent = fmtSize(t.downloaded||0);
-    len.textContent = fmtSize(t.length||0);
-    ds.textContent = fmtSize(t.downloadSpeed||0);
-    us.textContent = fmtSize(t.uploadSpeed||0);
-    p.textContent = t.numPeers||0;
+    // Обновляем прогресс
+    if (bar) {
+      const progress = t.progress || 0;
+      bar.style.width = progress + "%";
+      
+      // Добавляем анимацию для загрузки метаданных
+      if (progress === 0 && t.name && t.name.includes('Загрузка метаданных')) {
+        bar.classList.add('progress-bar-animated');
+      } else {
+        bar.classList.remove('progress-bar-animated');
+      }
+    }
+    
+    if (prog) prog.textContent = t.progress || 0;
+    if (down) down.textContent = fmtSize(t.downloaded || 0);
+    if (len) len.textContent = fmtSize(t.length || 0);
+    if (ds) ds.textContent = fmtSize(t.downloadSpeed || 0);
+    if (us) us.textContent = fmtSize(t.uploadSpeed || 0);
+    if (p) p.textContent = t.numPeers || 0;
 
-    if (files) files.innerHTML = '';
-    if (!t.files || !t.files.length) {
-      const span = document.createElement('span');
-      span.className = 'text-muted small';
-      span.textContent = 'Файлы не загружены (идёт получение метаданных)';
-      files?.appendChild(span);
-    } else if (files) {
-      t.files.forEach(f => {
-        const playMime = ['video/mp4','video/webm','audio/mpeg','audio/mp3','audio/aac','audio/ogg'];
-        const btn = document.createElement('a');
-        btn.className = 'btn btn-outline-primary btn-sm rounded-4';
-        btn.textContent = f.name;
-        const canPlay = playMime.includes(f.mime);
-        btn.href = canPlay ? `/torrents/stream/${t.infoHash}/${f.index}` : '#';
-        btn.target = canPlay ? '_blank' : '';
-        if (!canPlay) btn.classList.add('disabled');
-        files.appendChild(btn);
-      });
+    // Обновляем файлы
+    if (files) {
+      files.innerHTML = '';
+      if (!t.files || !t.files.length) {
+        const span = document.createElement('span');
+        span.className = 'text-muted small';
+        // Проверяем, есть ли метаданные
+        if (t.name && t.name.includes('Загрузка метаданных')) {
+          span.textContent = 'Файлы не загружены (идёт получение метаданных)';
+          span.classList.add('fst-italic');
+        } else {
+          span.textContent = 'Файлы не найдены';
+        }
+        files.appendChild(span);
+      } else {
+        t.files.forEach(f => {
+          const playMime = ['video/mp4','video/webm','audio/mpeg','audio/mp3','audio/aac','audio/ogg'];
+          const btn = document.createElement('a');
+          btn.className = 'btn btn-outline-primary btn-sm rounded-4';
+          btn.textContent = f.name;
+          const canPlay = playMime.includes(f.mime);
+          btn.href = canPlay ? `/torrents/stream/${t.infoHash}/${f.index}` : '#';
+          btn.target = canPlay ? '_blank' : '';
+          if (!canPlay) btn.classList.add('disabled');
+          files.appendChild(btn);
+        });
+      }
+    }
+    
+    // Обновляем статус торрента
+    const statusEl = el.querySelector('[data-status]');
+    if (statusEl) {
+      let statusText = '';
+      let statusClass = 'text-muted';
+      
+      if (t.paused) {
+        statusText = '⏸️ Торрент на паузе';
+        statusClass = 'text-warning';
+      } else if (!t.files || t.files.length === 0) {
+        // Торрент без метаданных
+        if (t.numPeers === 0) {
+          statusText = '🔍 Поиск пиров для загрузки метаданных...';
+          statusClass = 'text-info';
+        } else if (t.numPeers > 0) {
+          statusText = `📥 Подключение к ${t.numPeers} пирам для загрузки метаданных...`;
+          statusClass = 'text-primary';
+        } else {
+          statusText = '📋 Ожидание метаданных...';
+          statusClass = 'text-warning';
+        }
+      } else if (t.progress === 0 && t.numPeers === 0) {
+        statusText = '🔍 Поиск пиров...';
+        statusClass = 'text-info';
+      } else if (t.progress === 0 && t.numPeers > 0) {
+        statusText = '📥 Подключение к пирам...';
+        statusClass = 'text-primary';
+      } else if (t.progress > 0 && t.progress < 100) {
+        statusText = '📥 Загрузка...';
+        statusClass = 'text-success';
+      } else if (t.progress === 100) {
+        statusText = '✅ Загрузка завершена';
+        statusClass = 'text-success';
+      }
+      
+      statusEl.textContent = statusText;
+      statusEl.className = `mt-1 small ${statusClass}`;
     }
   }
 
-  socket.on('torrent:add', renderItem);
-  socket.on('torrent:update', renderItem);
+  // Обработка событий сокетов
+  socket.on('torrent:add', (torrent) => {
+    console.log('Добавлен новый торрент:', torrent);
+    renderItem(torrent);
+  });
+  
+  socket.on('torrent:update', (torrent) => {
+    console.log('Обновление торрента:', torrent);
+    renderItem(torrent);
+  });
+  
   socket.on('torrent:remove', ({infoHash}) => {
+    console.log('Удален торрент:', infoHash);
     const el = document.getElementById('t_'+infoHash);
     if (el) el.remove();
   });
 
+  // Загружаем существующие торренты при загрузке страницы
   (async () => {
-    const res = await fetch('/torrents/api/list');
-    const data = await res.json();
-    if (data && data.items) data.items.forEach(renderItem);
+    try {
+      const res = await fetch('/torrents/api/list');
+      const data = await res.json();
+      if (data && data.items) {
+        console.log('Загружено торрентов:', data.items.length);
+        data.items.forEach(renderItem);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки списка торрентов:', error);
+    }
   })();
+
+  // Периодическое обновление статуса торрентов (каждые 2 секунды)
+  setInterval(async () => {
+    try {
+      const res = await fetch('/torrents/api/list');
+      const data = await res.json();
+      if (data && data.items) {
+        data.items.forEach(renderItem);
+        
+        // Проверяем "зависшие" торренты (0% прогресса более 30 секунд)
+        data.items.forEach(torrent => {
+          if (torrent.progress === 0 && torrent.numPeers === 0 && !torrent.paused) {
+            // Проверяем, не "завис" ли торрент
+            const torrentEl = document.getElementById('t_' + torrent.infoHash);
+            if (torrentEl) {
+              const statusEl = torrentEl.querySelector('[data-status]');
+              if (statusEl && statusEl.textContent.includes('Поиск пиров')) {
+                // Если торрент долго ищет пиров, показываем предупреждение
+                statusEl.textContent = '⚠️ Долгий поиск пиров - попробуйте принудительный запуск';
+                statusEl.className = 'mt-1 small text-warning';
+              }
+            }
+          }
+          
+          // Если у торрента 0 пиров более 2 минут, предлагаем принудительное переподключение
+          if (torrent.numPeers === 0 && !torrent.paused) {
+            const torrentEl = document.getElementById('t_' + torrent.infoHash);
+            if (torrentEl) {
+              const statusEl = torrentEl.querySelector('[data-status]');
+              if (statusEl && statusEl.textContent.includes('Поиск пиров')) {
+                statusEl.innerHTML = '⚠️ Нет пиров - <button class="btn btn-danger btn-sm" onclick="forceReconnectTorrent(\'' + torrent.infoHash + '\')">Принудительное переподключение</button>';
+                statusEl.className = 'mt-1 small text-warning';
+              }
+            }
+          }
+        });
+      }
+    } catch (error) {
+      // Игнорируем ошибки при периодическом обновлении
+    }
+  }, 2000);
+  
+  // Автоматическое обновление статистики пиров каждые 10 секунд
+  setInterval(async () => {
+    try {
+      const res = await fetch('/torrents/api/list');
+      const data = await res.json();
+      if (data && data.items) {
+        // Обновляем только торренты с активными загрузками
+        data.items.forEach(torrent => {
+          if (torrent.progress > 0 || torrent.downloadSpeed > 0) {
+            renderItem(torrent);
+          }
+        });
+      }
+    } catch (error) {
+      // Игнорируем ошибки
+    }
+  }, 10000);
 
   document.getElementById('magnetForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const val = document.getElementById('magnetInput').value.trim();
     if (!val) return;
-    await fetch('/torrents/api/add-magnet', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ magnet: val }) });
-    document.getElementById('magnetInput').value = '';
+    
+    try {
+      const response = await fetch('/torrents/api/add-magnet', { 
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ magnet: val }) 
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('Торрент добавлен:', result.infoHash);
+        // Очищаем поле ввода
+        document.getElementById('magnetInput').value = '';
+      } else {
+        console.error('Ошибка добавления торрента:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при добавлении торрента:', error);
+      alert('Ошибка сети при добавлении торрента');
+    }
   });
 
   const dz = document.getElementById('dropZone');
@@ -223,17 +607,47 @@
     dz.classList.remove('bg-body-tertiary');
     const file = e.dataTransfer.files[0];
     if (!file) return;
-    const fd = new FormData();
-    fd.append('torrent', file);
-    await fetch('/torrents/api/add-file', { method:'POST', body: fd });
+    
+    try {
+      const fd = new FormData();
+      fd.append('torrent', file);
+      const response = await fetch('/torrents/api/add-file', { method:'POST', body: fd });
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('Торрент из файла добавлен:', result.infoHash);
+      } else {
+        console.error('Ошибка добавления торрента из файла:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при добавлении торрента из файла:', error);
+      alert('Ошибка сети при добавлении торрента');
+    }
   });
-  fi.addEventListener('change', async () => {
-    const file = fi.files[0];
+  
+  fi.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
     if (!file) return;
-    const fd = new FormData();
-    fd.append('torrent', file);
-    await fetch('/torrents/api/add-file', { method:'POST', body: fd });
-    fi.value = '';
+    
+    try {
+      const fd = new FormData();
+      fd.append('torrent', file);
+      const response = await fetch('/torrents/api/add-file', { method:'POST', body: fd });
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('Торрент из файла добавлен:', result.infoHash);
+        // Очищаем поле файла
+        fi.value = '';
+      } else {
+        console.error('Ошибка добавления торрента из файла:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при добавлении торрента из файла:', error);
+      alert('Ошибка сети при добавлении торрента');
+    }
   });
 
   // YTS поиск
@@ -417,12 +831,20 @@
 
   async function addTorrentMagnet(magnetLink) {
     try {
-      await fetch('/torrents/api/add-magnet', {
+      const response = await fetch('/torrents/api/add-magnet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ magnet: magnetLink })
       });
-      alert('Торрент добавлен в загрузки!');
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('YTS торрент добавлен:', result.infoHash);
+        alert('Торрент добавлен в загрузки!');
+      } else {
+        console.error('Ошибка добавления YTS торрента:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
     } catch (error) {
       console.error('Add torrent error:', error);
       alert('Ошибка добавления торрента');
@@ -436,12 +858,20 @@
 
       if (data.success && data.info && data.info.torrents && data.info.torrents.length > 0) {
         const bestTorrent = data.info.torrents[0]; // Первый торрент (сортированный по сидам)
-        await fetch('/torrents/api/add-magnet', {
+        const response = await fetch('/torrents/api/add-magnet', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ magnet: bestTorrent.link })
         });
-        alert(`Добавлен лучший торрент: ${bestTorrent.title.substring(0, 50)}...`);
+        
+        const result = await response.json();
+        if (result.success) {
+          console.log('Лучший торрент добавлен:', result.infoHash);
+          alert(`Добавлен лучший торрент: ${bestTorrent.title.substring(0, 50)}...`);
+        } else {
+          console.error('Ошибка добавления лучшего торрента:', result.msg);
+          alert('Ошибка добавления торрента: ' + result.msg);
+        }
       } else {
         alert('Торренты не найдены');
       }
@@ -450,4 +880,298 @@
       alert('Ошибка добавления торрента');
     }
   }
+
+  async function addYtsMagnet(hash) {
+    try {
+      // Для YTS нужно создать magnet ссылку из hash
+      const magnetLink = `magnet:?xt=urn:btih:${hash}`;
+      const response = await fetch('/torrents/api/add-magnet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ magnet: magnetLink })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log('YTS торрент добавлен:', result.infoHash);
+        alert('Торрент добавлен в загрузки!');
+        // Закрываем модальное окно
+        const modal = bootstrap.Modal.getInstance(document.getElementById('ytsDetailsModal'));
+        if (modal) modal.hide();
+      } else {
+        console.error('Ошибка добавления YTS торрента:', result.msg);
+        alert('Ошибка добавления торрента: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Add YTS torrent error:', error);
+      alert('Ошибка добавления торрента');
+    }
+  }
+
+  async function forceStartTorrent(infoHash) {
+    try {
+      const response = await fetch(`/torrents/api/${infoHash}/force-start`, { method:'POST' });
+      const result = await response.json();
+      if (result.success) {
+        console.log('Торрент принудительно запущен');
+        // Обновляем статус
+        const torrentEl = document.getElementById('t_' + infoHash);
+        if (torrentEl) {
+          const statusEl = torrentEl.querySelector('[data-status]');
+          if (statusEl) {
+            statusEl.textContent = '⚡ Принудительно запущен...';
+            statusEl.className = 'mt-1 small text-info';
+          }
+        }
+      } else {
+        console.error('Ошибка принудительного запуска:', result.msg);
+        alert('Ошибка принудительного запуска: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при принудительном запуске:', error);
+      alert('Ошибка сети при принудительном запуске');
+    }
+  }
+  
+  async function forceMetadataTorrent(infoHash) {
+    try {
+      const response = await fetch(`/torrents/api/${infoHash}/force-metadata`, { method:'POST' });
+      const result = await response.json();
+      if (result.success) {
+        console.log('Принудительная загрузка метаданных запущена');
+        // Обновляем статус
+        const torrentEl = document.getElementById('t_' + infoHash);
+        if (torrentEl) {
+          const statusEl = torrentEl.querySelector('[data-status]');
+          if (statusEl) {
+            statusEl.textContent = '📋 Принудительная загрузка метаданных...';
+            statusEl.className = 'mt-1 small text-info';
+          }
+        }
+      } else {
+        console.error('Ошибка принудительной загрузки метаданных:', result.msg);
+        alert('Ошибка принудительной загрузки метаданных: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при принудительной загрузке метаданных:', error);
+      alert('Ошибка сети при принудительной загрузке метаданных');
+    }
+  }
+
+  async function forceReconnectTorrent(infoHash) {
+    try {
+      const response = await fetch(`/torrents/api/${infoHash}/force-reconnect`, { method:'POST' });
+      const result = await response.json();
+      if (result.success) {
+        console.log('Принудительное переподключение запущено');
+        // Обновляем статус
+        const torrentEl = document.getElementById('t_' + infoHash);
+        if (torrentEl) {
+          const statusEl = torrentEl.querySelector('[data-status]');
+          if (statusEl) {
+            statusEl.textContent = '🔄 Принудительное переподключение...';
+            statusEl.className = 'mt-1 small text-info';
+          }
+        }
+      } else {
+        console.error('Ошибка принудительного переподключения:', result.msg);
+        alert('Ошибка принудительного переподключения: ' + result.msg);
+      }
+    } catch (error) {
+      console.error('Ошибка сети при принудительном переподключении:', error);
+      alert('Ошибка сети при принудительном переподключении');
+    }
+  }
+
+  // Обработчики для кнопок управления
+  document.addEventListener('click', async (e) => {
+    const target = e.target;
+    
+    // Кнопка пауза/пуск
+    if (target.hasAttribute('data-toggle')) {
+      const action = target.getAttribute('data-toggle');
+      const infoHash = target.closest('[data-info-hash]').getAttribute('data-info-hash');
+      
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/${action}`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log(`[${action}] ${result.msg}`);
+          // Обновляем список
+          await refreshList();
+        } else {
+          console.error(`[${action}] Ошибка:`, result.msg);
+        }
+      } catch (error) {
+        console.error(`[${action}] Ошибка:`, error);
+      }
+    }
+    
+    // Кнопка удаления
+    if (target.hasAttribute('data-remove')) {
+      const infoHash = target.getAttribute('data-remove');
+      if (confirm('Удалить торрент?')) {
+        try {
+          const response = await fetch(`/torrents/api/${infoHash}`, { method: 'DELETE' });
+          const result = await response.json();
+          
+          if (result.success) {
+            console.log('[Удаление] Торрент удален');
+            await refreshList();
+          } else {
+            console.error('[Удаление] Ошибка:', result.msg);
+          }
+        } catch (error) {
+          console.error('[Удаление] Ошибка:', error);
+        }
+      }
+    }
+    
+    // Кнопка удаления с файлами
+    if (target.hasAttribute('data-remove-files')) {
+      const infoHash = target.getAttribute('data-remove-files');
+      if (confirm('Удалить торрент и все файлы?')) {
+        try {
+          const response = await fetch(`/torrents/api/${infoHash}?files=true`, { method: 'DELETE' });
+          const result = await response.json();
+          
+          if (result.success) {
+            console.log('[Удаление] Торрент и файлы удалены');
+            await refreshList();
+          } else {
+            console.error('[Удаление] Ошибка:', result.msg);
+          }
+        } catch (error) {
+          console.error('[Удаление] Ошибка:', error);
+        }
+      }
+    }
+    
+    // Кнопка принудительного запуска
+    if (target.hasAttribute('data-force-start')) {
+      const infoHash = target.getAttribute('data-force-start');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-start`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительный запуск]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительный запуск] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительный запуск] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительной загрузки метаданных
+    if (target.hasAttribute('data-force-metadata')) {
+      const infoHash = target.getAttribute('data-force-metadata');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-metadata`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительная загрузка метаданных]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительная загрузка метаданных] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительная загрузка метаданных] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительного подключения
+    if (target.hasAttribute('data-force-connect')) {
+      const infoHash = target.getAttribute('data-force-connect');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-connect`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительное подключение]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительное подключение] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительное подключение] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительного переподключения
+    if (target.hasAttribute('data-force-reconnect')) {
+      const infoHash = target.getAttribute('data-force-reconnect');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-reconnect`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительное переподключение]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительное переподключение] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительное переподключение] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка принудительного перезапуска
+    if (target.hasAttribute('data-force-restart')) {
+      const infoHash = target.getAttribute('data-force-restart');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-restart`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Принудительный перезапуск]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Принудительный перезапуск] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Принудительный перезапуск] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка обновления статистики
+    if (target.hasAttribute('data-force-update-stats')) {
+      const infoHash = target.getAttribute('data-force-update-stats');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/force-update-stats`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Обновление статистики]', result.msg);
+          await refreshList();
+        } else {
+          console.error('[Обновление статистики] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Обновление статистики] Ошибка:', error);
+      }
+    }
+    
+    // Кнопка диагностики
+    if (target.hasAttribute('data-diagnose')) {
+      const infoHash = target.getAttribute('data-diagnose');
+      try {
+        const response = await fetch(`/torrents/api/${infoHash}/diagnose`);
+        const result = await response.json();
+        
+        if (result.success) {
+          console.log('[Диагностика]', result.diagnosis);
+          alert(`Диагностика торрента:\n\n${JSON.stringify(result.diagnosis, null, 2)}`);
+        } else {
+          console.error('[Диагностика] Ошибка:', result.msg);
+        }
+      } catch (error) {
+        console.error('[Диагностика] Ошибка:', error);
+      }
+    }
+  });
 </script>
