@@ -1,4 +1,5 @@
 const axios = require('axios');
+const cheerio = require('cheerio');
 const Settings = require('../models/SettingsModel');
 const https = require('https');
 
@@ -66,8 +67,11 @@ class YtsController {
           const movieId = `kinopoisk_${film.id}`;
           this.movieCache.set(movieId, details);
           
+          // Ищем торренты для фильма
+          const torrents = await this.searchTorrents(details);
+          
           // Форматируем результат
-          return this.formatKinopoiskResult(details);
+          return this.formatKinopoiskResult(details, torrents);
         }
       }
 
@@ -111,20 +115,23 @@ class YtsController {
   }
 
   // Форматирование результата Kinopoisk
-  formatKinopoiskResult(film) {
+  formatKinopoiskResult(film, torrents) {
+    // Выбираем лучший торрент (с наибольшим количеством сидов)
+    const bestTorrent = torrents.length > 0 ? torrents[0] : null;
+    
     return [{
       id: `kinopoisk_${film.id}`,
       movieId: `kinopoisk_${film.id}`,
       title: `${film.name || film.alternativeName || film.enName} (${film.year || 'N/A'})`,
-      quality: 'Unknown',
+      quality: bestTorrent ? 'Found' : 'Unknown',
       type: film.isSeries ? 'series' : 'movie',
-      size: 'Unknown',
-      seeds: 0,
-      leeches: 0,
+      size: bestTorrent ? bestTorrent.size : 'Unknown',
+      seeds: bestTorrent ? bestTorrent.seeds : 0,
+      leeches: bestTorrent ? bestTorrent.leeches : 0,
       date: film.year ? `${film.year}-01-01` : new Date().toISOString(),
-      hash: '', // Нет торрентов
-      torrentUrl: '', // Нет торрентов
-      magnet: '',
+      hash: bestTorrent ? bestTorrent.link : '',
+      torrentUrl: bestTorrent ? bestTorrent.link : '',
+      magnet: bestTorrent ? bestTorrent.link : '',
       poster: film.poster?.url || '',
       year: film.year,
       rating: film.rating?.kp || film.rating?.imdb,
@@ -142,7 +149,8 @@ class YtsController {
       ageRating: film.ageRating,
       budget: film.budget,
       fees: film.fees,
-      premiere: film.premiere
+      premiere: film.premiere,
+      torrents: torrents // Добавляем найденные торренты
     }];
   }
 
@@ -156,6 +164,17 @@ class YtsController {
         const cachedMovie = this.movieCache.get(movieId);
         
         if (cachedMovie) {
+          // Ищем торренты для фильма, если их еще нет
+          let torrents = [];
+          if (!cachedMovie.torrents) {
+            torrents = await this.searchTorrents(cachedMovie);
+            // Обновляем кэш с торрентами
+            cachedMovie.torrents = torrents;
+            this.movieCache.set(movieId, cachedMovie);
+          } else {
+            torrents = cachedMovie.torrents;
+          }
+
           return {
             id: cachedMovie.id,
             title: cachedMovie.name || cachedMovie.alternativeName || cachedMovie.enName,
@@ -180,7 +199,7 @@ class YtsController {
             budget: cachedMovie.budget,
             fees: cachedMovie.fees,
             premiere: cachedMovie.premiere,
-            torrents: [] // Нет торрентов
+            torrents: torrents
           };
         }
       }
@@ -217,6 +236,167 @@ class YtsController {
       name: 'Kinopoisk Movie',
       files: []
     };
+  }
+
+  // Поиск торрентов для фильма
+  async searchTorrents(film) {
+    try {
+      console.log(`[TORRENT] Поиск торрентов для: ${film.name || film.alternativeName || film.enName}`);
+      
+      const searchQueries = [
+        film.name,
+        film.alternativeName,
+        film.enName,
+        `${film.name} ${film.year}`,
+        `${film.alternativeName} ${film.year}`,
+        `${film.enName} ${film.year}`
+      ].filter(Boolean);
+
+      const allTorrents = [];
+
+      for (const query of searchQueries) {
+        try {
+          // Поиск на Rutor
+          const rutorTorrents = await this.searchRutor(query);
+          allTorrents.push(...rutorTorrents);
+
+          // Поиск на Nyaa (для аниме)
+          if (film.genres?.some(g => g.name.toLowerCase().includes('аниме'))) {
+            const nyaaTorrents = await this.searchNyaa(query);
+            allTorrents.push(...nyaaTorrents);
+          }
+        } catch (error) {
+          console.log(`[TORRENT] Ошибка поиска для "${query}":`, error.message);
+        }
+      }
+
+      // Убираем дубликаты и сортируем по размеру
+      const uniqueTorrents = this.removeDuplicateTorrents(allTorrents);
+      console.log(`[TORRENT] Найдено ${uniqueTorrents.length} уникальных торрентов`);
+
+      return uniqueTorrents;
+    } catch (error) {
+      console.log(`[TORRENT] Ошибка поиска торрентов:`, error.message);
+      return [];
+    }
+  }
+
+  // Поиск на Rutor
+  async searchRutor(query) {
+    try {
+      console.log(`[RUTOR] Поиск: "${query}"`);
+      const searchURL = 'http://rutor.info/search/' + encodeURIComponent(query);
+      console.log(`[RUTOR] URL: ${searchURL}`);
+      
+      const response = await axios.get(searchURL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        timeout: 10000,
+        httpsAgent: this.httpsAgent
+      });
+
+      console.log(`[RUTOR] Ответ получен, статус: ${response.status}`);
+      const $ = require('cheerio').load(response.data);
+      const torrents = [];
+
+      // Попробуем разные селекторы
+      const selectors = ['.gai', '.tum', 'tr.gai', 'tr.tum', 'table tr'];
+      
+      for (const selector of selectors) {
+        const elements = $(selector);
+        console.log(`[RUTOR] Селектор "${selector}": найдено ${elements.length} элементов`);
+        
+        if (elements.length > 0) {
+          elements.each((i, element) => {
+            const $el = $(element);
+            const title = $el.find('a').first().text().trim();
+            const size = $el.find('td').eq(3).text().trim();
+            const seeds = parseInt($el.find('td').eq(4).text().trim()) || 0;
+            const leeches = parseInt($el.find('td').eq(5).text().trim()) || 0;
+            const link = $el.find('a').first().attr('href');
+
+            if (title && link) {
+              torrents.push({
+                title: title,
+                size: size,
+                seeds: seeds,
+                leeches: leeches,
+                link: 'http://rutor.info' + link,
+                source: 'rutor'
+              });
+              console.log(`[RUTOR] Найден торрент: ${title.substring(0, 30)}...`);
+            }
+          });
+          
+          if (torrents.length > 0) {
+            console.log(`[RUTOR] Найдено ${torrents.length} торрентов с селектором "${selector}"`);
+            break;
+          }
+        }
+      }
+
+      return torrents;
+    } catch (error) {
+      console.log(`[RUTOR] Ошибка поиска:`, error.message);
+      return [];
+    }
+  }
+
+  // Поиск на Nyaa
+  async searchNyaa(query) {
+    try {
+      const searchURL = 'https://nyaa.si/?f=0&c=0_0&q=' + encodeURIComponent(query);
+      
+      const response = await axios.get(searchURL, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        timeout: 10000,
+        httpsAgent: this.httpsAgent
+      });
+
+      const $ = require('cheerio').load(response.data);
+      const torrents = [];
+
+      $('tbody tr').each((i, element) => {
+        const $el = $(element);
+        const title = $el.find('td').eq(1).find('a').last().text().trim();
+        const size = $el.find('td').eq(3).text().trim();
+        const seeds = parseInt($el.find('td').eq(5).text().trim()) || 0;
+        const leeches = parseInt($el.find('td').eq(6).text().trim()) || 0;
+        const link = $el.find('td').eq(1).find('a').last().attr('href');
+
+        if (title && link) {
+          torrents.push({
+            title: title,
+            size: size,
+            seeds: seeds,
+            leeches: leeches,
+            link: 'https://nyaa.si' + link,
+            source: 'nyaa'
+          });
+        }
+      });
+
+      return torrents;
+    } catch (error) {
+      console.log(`[NYAA] Ошибка поиска:`, error.message);
+      return [];
+    }
+  }
+
+  // Удаление дубликатов торрентов
+  removeDuplicateTorrents(torrents) {
+    const seen = new Set();
+    return torrents.filter(torrent => {
+      const key = `${torrent.title}_${torrent.size}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    }).sort((a, b) => b.seeds - a.seeds); // Сортировка по количеству сидов
   }
 }
 
